@@ -1,130 +1,101 @@
 package com.example.cooking;
 
 import android.os.AsyncTask;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import org.json.JSONObject;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import okhttp3.*;
+
+import java.io.IOException;
 
 public class RegistrationTask extends AsyncTask<String, Void, Boolean> {
-    private RegistrationCallback callback;
+    private final RegistrationCallback callback;
     private String errorMessage;
+    private final OkHttpClient client;
 
     public interface RegistrationCallback {
         void onRegistrationSuccess();
         void onRegistrationFailure(String error);
     }
 
-    // Конструктор для передачи callback
     public RegistrationTask(RegistrationCallback callback) {
         this.callback = callback;
+        this.client = new OkHttpClient.Builder().build();
     }
 
     @Override
     protected Boolean doInBackground(String... params) {
-        // Ожидаем, что params[0] - email, params[1] - password.
-        // При необходимости можно передать дополнительные параметры, например, имя пользователя.
         String email = params[0];
         String password = params[1];
-        HttpURLConnection conn = null;
 
+        // 1. Формируем JSON-тело
+        JSONObject jsonInput = new JSONObject();
         try {
-            // Замените URL на адрес вашего сервера для регистрации
-            URL url = new URL("http://g3.veroid.network:19029/register");
-            conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setDoOutput(true);
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
-
-            // Подготовка JSON данных для регистрации
-            JSONObject jsonInput = new JSONObject();
             jsonInput.put("email", email);
             jsonInput.put("password", password);
-            // Если необходимо, можно добавить дополнительные поля
-            // Например, если передан третий параметр, добавить имя пользователя:
-            if (params.length > 2) {
-                String username = params[2];
-                jsonInput.put("username", username);
-            }
-            String jsonInputString = jsonInput.toString();
-            Log.d("RegistrationTask", "Отправка запроса: " + jsonInputString);
+        } catch (Exception e) {
+            Log.e("RegistrationTask", "JSON error", e);
+            errorMessage = "Invalid input data";
+            return false;
+        }
 
-            // Отправка данных
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
-                os.flush();
-            }
+        // 2. Создаём запрос
+        RequestBody body = RequestBody.create(
+                jsonInput.toString(),
+                MediaType.parse("application/json; charset=utf-8")
+        );
 
-            // Получение кода ответа
-            int responseCode = conn.getResponseCode();
-            Log.d("RegistrationTask", "Код ответа: " + responseCode);
+        Request request = new Request.Builder()
+                .url("http://g3.veroid.network:19029/register")
+                .post(body)
+                .addHeader("Accept", "application/json")
+                .build();
 
-            // Чтение ответа
-            BufferedReader reader;
-            if (responseCode >= 200 && responseCode < 300) {
-                reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-            } else {
-                reader = new BufferedReader(new InputStreamReader(conn.getErrorStream()));
-            }
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-            reader.close();
-            String responseBody = response.toString();
-            Log.d("RegistrationTask", "Ответ сервера: " + responseBody);
-
-            // Анализ ответа сервера
-            if (responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_CREATED) {
-                try {
-                    JSONObject jsonResponse = new JSONObject(responseBody);
-                    if (jsonResponse.has("success")) {
-                        boolean success = jsonResponse.getBoolean("success");
-                        if (success) {
-                            return true;
-                        } else {
-                            errorMessage = jsonResponse.optString("message", "Ошибка регистрации");
-                            return false;
-                        }
-                    } else {
-                        errorMessage = "Некорректный формат ответа сервера";
-                        return false;
-                    }
-                } catch (Exception e) {
-                    Log.e("RegistrationTask", "Ошибка обработки JSON", e);
-                    errorMessage = "Ошибка обработки ответа сервера";
-                    return false;
-                }
-            } else {
-                errorMessage = "Ошибка сервера: " + responseCode;
+        // 3. Выполняем запрос
+        try (Response response = client.newCall(request).execute()) {
+            // 4. Обрабатываем ответ
+            ResponseBody responseBody = response.body();
+            if (responseBody == null) {
+                errorMessage = "Empty server response";
                 return false;
             }
-        } catch (Exception e) {
-            Log.e("RegistrationTask", "Ошибка при выполнении запроса регистрации", e);
-            errorMessage = "Ошибка соединения: " + e.getMessage();
-            return false;
-        } finally {
-            if (conn != null) {
-                conn.disconnect();
+
+            String responseData = responseBody.string();
+            Log.d("RegistrationTask", "Response: " + responseData);
+
+            JSONObject jsonResponse = new JSONObject(responseData);
+            if (jsonResponse.optBoolean("success", false)) {
+                return true;
+            } else {
+                errorMessage = jsonResponse.optString("message", "Registration failed");
+                return false;
             }
+
+        } catch (IOException e) {
+            Log.e("RegistrationTask", "Network error", e);
+            errorMessage = "Connection error: " + e.getMessage();
+            return false;
+        } catch (Exception e) {
+            Log.e("RegistrationTask", "Unexpected error", e);
+            errorMessage = "Error: " + e.getClass().getSimpleName();
+            return false;
         }
     }
 
     @Override
     protected void onPostExecute(Boolean success) {
-        if (success) {
-            callback.onRegistrationSuccess();
-        } else {
-            callback.onRegistrationFailure(errorMessage);
-        }
+        if (callback == null) return;
+
+        // Гарантируем выполнение в UI-потоке
+        new Handler(Looper.getMainLooper()).post(() -> {
+            if (success) {
+                callback.onRegistrationSuccess();
+            } else {
+                callback.onRegistrationFailure(
+                        errorMessage != null ? errorMessage : "Unknown error"
+                );
+            }
+        });
     }
 }
