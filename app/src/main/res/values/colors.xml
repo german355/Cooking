@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="primary">#FF9C40</color>
+    <color name="primary_dark">#E88C30</color>
+    <color name="accent">#FF9C40</color>
+    <color name="background">#FFFAED</color>
+    <color name="text_dark">#2E2E32</color>
+    <color name="text_light">#FFFFFF</color>
+    <color name="card_background">#FFFFFF</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="md_theme_primary">#006C4C</color>
+    <color name="md_theme_onPrimary">#FFFFFF</color>
+    <color name="md_theme_primaryContainer">#89F8C7</color>
+    <color name="md_theme_onPrimaryContainer">#002114</color>
+    <color name="md_theme_secondary">#4C6358</color>
+    <color name="md_theme_onSecondary">#FFFFFF</color>
+    <color name="md_theme_secondaryContainer">#CFE9DB</color>
+    <color name="md_theme_onSecondaryContainer">#092017</color>
+    <color name="md_theme_background">#FBFDF9</color>
 </resources>

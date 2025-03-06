@@ -1,14 +1,17 @@
-package com.example.cooking;
+package com.example.cooking.Recipe;
 
 import android.content.Intent;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
+import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
-import com.google.android.material.card.MaterialCardView;
+import com.example.cooking.R;
+
 import java.util.List;
 
 /**
@@ -29,7 +32,7 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
     @Override
     public RecipeViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.recipe_card_item, parent, false);
+                .inflate(R.layout.recipe_card, parent, false);
         return new RecipeViewHolder(view);
     }
 
@@ -40,15 +43,17 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
     public void onBindViewHolder(@NonNull RecipeViewHolder holder, int position) {
         Recipe recipe = recipes.get(position);
         holder.titleTextView.setText(recipe.getTitle());
-        holder.imageView.setImageResource(R.drawable.ic_food_placeholder);
-
-        // Добавляем обработчик нажатия
+        
+        // Устанавливаем обработчик нажатий на карточку
         holder.cardView.setOnClickListener(v -> {
             Intent intent = new Intent(v.getContext(), RecipeDetailActivity.class);
-            intent.putExtra(RecipeDetailActivity.EXTRA_RECIPE_TITLE, recipe.getTitle());
-            intent.putExtra(RecipeDetailActivity.EXTRA_RECIPE_CREATOR, recipe.getCreator());
-            intent.putExtra(RecipeDetailActivity.EXTRA_RECIPE_INSTRUCTOR, recipe.getInstructor());
-            intent.putExtra(RecipeDetailActivity.EXTRA_RECIPE_FOOD, recipe.getFood());
+            intent.putExtra("recipe_id", recipe.getId());
+            intent.putExtra("recipe_title", recipe.getTitle());
+            intent.putExtra("recipe_ingredients", recipe.getIngredients());
+            intent.putExtra("recipe_instructions", recipe.getInstructions());
+            intent.putExtra("Created_at", recipe.getCreated_at());
+            intent.putExtra("userId", recipe.getUserId());
+            Log.d("Id", recipe.getUserId());
             v.getContext().startActivity(intent);
         });
     }
@@ -58,19 +63,25 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
         return recipes.size();
     }
 
+    public void updateRecipes(List<Recipe> newRecipes) {
+        this.recipes.clear();
+        this.recipes.addAll(newRecipes);
+        notifyDataSetChanged();
+    }
+
     /**
      * Внутренний класс для хранения ссылок на элементы карточки
      */
     static class RecipeViewHolder extends RecyclerView.ViewHolder {
-        MaterialCardView cardView;
-        ImageView imageView;
         TextView titleTextView;
+        ImageView imageView;
+        CardView cardView;
 
         RecipeViewHolder(View itemView) {
             super(itemView);
-            cardView = itemView.findViewById(R.id.card_view);
-            imageView = itemView.findViewById(R.id.recipe_image);
             titleTextView = itemView.findViewById(R.id.recipe_title);
+            imageView = itemView.findViewById(R.id.recipe_image);
+            cardView = itemView.findViewById(R.id.recipe_card);
         }
     }
 } 

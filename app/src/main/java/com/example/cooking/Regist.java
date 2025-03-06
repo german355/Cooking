@@ -7,10 +7,11 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import com.google.android.material.appbar.MaterialToolbar;
+import com.example.cooking.ServerWorker.RegistrationTask;
 import com.google.android.material.textfield.TextInputEditText;
 
 public class Regist extends AppCompatActivity implements RegistrationTask.RegistrationCallback {
+    private TextInputEditText nameEditText;
     private TextInputEditText Email;
     private TextInputEditText Pass;
     private TextInputEditText ConfirmPass;
@@ -23,23 +24,21 @@ public class Regist extends AppCompatActivity implements RegistrationTask.Regist
         setContentView(R.layout.activity_register);
 
         // Инициализация views
-        Email = findViewById(R.id.emailEditTextRegist);
-        Pass = findViewById(R.id.passwordEditText1);
+        nameEditText = findViewById(R.id.NameEditText);
+        Email = findViewById(R.id.emailEditText);
+        Pass = findViewById(R.id.passwordEditText);
         ConfirmPass = findViewById(R.id.passwordEditText2);
         regist = findViewById(R.id.registerButton);
         enter = findViewById(R.id.loginPromptTextView);
 
-        // Настройка toolbar
-        MaterialToolbar toolbar = findViewById(R.id.toolbar);
-        toolbar.setNavigationOnClickListener(v -> finish());
-
         // Обработчик нажатия на кнопку регистрации
         regist.setOnClickListener(v -> {
+            String name = nameEditText.getText().toString();
             String email = Email.getText().toString();
             String password = Pass.getText().toString();
             String confirmPassword = ConfirmPass.getText().toString();
 
-            if (email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
+            if (name.isEmpty() || email.isEmpty() || password.isEmpty() || confirmPassword.isEmpty()) {
                 Toast.makeText(this, "Заполните все поля", Toast.LENGTH_SHORT).show();
                 return;
             }
@@ -54,7 +53,7 @@ public class Regist extends AppCompatActivity implements RegistrationTask.Regist
             regist.setText("Подождите...");
 
             // Запускаем регистрацию
-            new RegistrationTask(this).execute(email, password, confirmPassword);
+            new RegistrationTask(this).execute(email, password, name);
         });
 
         // Обработчик нажатия на текст входа
@@ -69,13 +68,25 @@ public class Regist extends AppCompatActivity implements RegistrationTask.Regist
     public void onRegistrationSuccess() {
         runOnUiThread(() -> {
             try {
+                // Показываем пользователю, что регистрация успешна
+                Toast.makeText(this, "Регистрация успешна! Перенаправление на экран входа...", Toast.LENGTH_SHORT).show();
+                
+                // Создаем Intent и передаем учетные данные
                 Intent intent = new Intent(Regist.this, StartActivity.class);
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                intent.putExtra("email", Email.getText().toString());
+                intent.putExtra("password", Pass.getText().toString());
+                
+                // Сразу переходим на экран входа
                 startActivity(intent);
                 finish();
+                
             } catch (Exception e) {
-                Log.e("Regist", "Error regist");
-                Toast.makeText(this, "Ошибка регистрации", Toast.LENGTH_SHORT).show();
+                Log.e("Regist", "Error during successful registration completion: " + e.getMessage());
+                Toast.makeText(this, "Регистрация успешна, но возникла ошибка при переходе на экран входа", Toast.LENGTH_SHORT).show();
+                
+                // Возвращаем кнопку в исходное состояние на случай, если что-то пошло не так
+                regist.setEnabled(true);
+                regist.setText("Зарегистрироваться");
             }
         });
     }
@@ -84,7 +95,17 @@ public class Regist extends AppCompatActivity implements RegistrationTask.Regist
     public void onRegistrationFailure(String error) {
         runOnUiThread(() -> {
             try {
-                Toast.makeText(this, "Ошибка регистрации: " + error, Toast.LENGTH_LONG).show();
+                // Показываем более дружественное сообщение
+                String friendlyMessage;
+                if (error.contains("Пользователь с таким email уже существует")) {
+                    friendlyMessage = "Этот логин уже используется. Попробуйте другой.";
+                } else if (error.contains("соединение прервано")) {
+                    friendlyMessage = "Проблема с подключением к серверу. Проверьте интернет-соединение.";
+                } else {
+                    friendlyMessage = "Не удалось зарегистрироваться. Попробуйте позже.";
+                }
+                
+                Toast.makeText(this, friendlyMessage, Toast.LENGTH_LONG).show();
                 // Возвращаем кнопку в исходное состояние
                 regist.setEnabled(true);
                 regist.setText("Зарегистрироваться");

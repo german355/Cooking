@@ -1,63 +1,229 @@
-# Импорт необходимых модулей:
-# Flask - для создания веб-сервера;
-# request - для работы с входящими HTTP-запросами;
-# jsonify - для формирования JSON-ответа.
 from flask import Flask, request, jsonify
-import cryptography
-
-# Импортируем модуль pymysql для подключения и работы с базой данных MySQL.
 import pymysql
+import bcrypt
 
-# Создаем экземпляр приложения Flask.
 app = Flask(__name__)
 
-# Настраиваем подключение к базе данных MySQL.
-# Пожалуйста, замените 'your_username', 'your_password' и 'your_database' на актуальные данные.
-connection = pymysql.connect(
-    host='cdb.veroid.net',  # Адрес сервера базы данных
-    user='u23298_2xL9nWI7Ta',  # Имя пользователя базы данных
-    password='kohpK.S8=2D12hELw!=boPNC',  # Пароль пользователя
-    database='s23298_Samsung_progect',  # Имя базы данных
-    charset='utf8mb4',  # Кодировка
-    cursorclass=pymysql.cursors.DictCursor  # Результаты запросов будут возвращаться в виде словарей
-)
+
+def hash_password(plain_password):
+    # Генерация соли и хэширование пароля
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(plain_password.encode('utf-8'), salt)
+    return hashed
+
+# Функция для создания нового подключения к базе данных
+def get_db_connection():
+    return pymysql.connect(
+        host='cdb.veroid.net',  # Адрес сервера базы данных
+        user='u23298_2xL9nWI7Ta',  # Имя пользователя базы данных
+        password='kohpK.S8=2D12hELw!=boPNC',  # Пароль пользователя
+        database='s23298_Samsung_progect',  # Имя базы данных
+        charset='utf8mb4',  # Кодировка
+        cursorclass=pymysql.cursors.DictCursor  # Результаты запросов возвращаются в виде словарей
+    )
+
 
 # Обработчик для главной страницы
 @app.route('/')
 def index():
     return "Добро пожаловать на сервер!"
 
-# Определяем маршрут '/login' для обработки POST-запросов.
+
+# Эндпоинт для логина
 @app.route('/login', methods=['POST'])
 def login():
-    # Получаем данные из JSON-тела запроса.
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No JSON data provided'}), 400
+
+        email = data.get('email')
+        password = data.get('password')
+        name = data.get('name')
+
+        if not email or not password:
+            return jsonify({'success': False, 'message': 'Email or password missing'}), 400
+
+        conn = get_db_connection()
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:  # Используем DictCursor
+            # Выполняем запрос, включая id в результат
+            sql = "SELECT id, email, password, name FROM users WHERE email=%s"
+            cursor.execute(sql, email)
+            result = cursor.fetchone()
+        conn.close()
+
+        if result:
+            # Возвращаем успех вместе с id пользователя
+            stored_hash = result['password']
+            if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+                return jsonify({
+                    'success': True,
+                    'userId': result['id'],
+                    'name': result['name']
+                })
+        else:
+            return jsonify({'success': False, 'message': 'Неверный email или пароль'})
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+# Эндпоинт для регистрации новых пользователей
+@app.route('/register', methods=['POST'])
+def register():
+    try:
+        data = request.get_json()
+        if not data:
+            print("Registration failed: No JSON data")
+            return jsonify({'success': False, 'message': 'No JSON data provided'}), 400
+
+        email = data.get('email')
+        password = data.get('password')
+        name = data.get('name')
+
+        print(f"Attempting to register user: {email}")
+
+        if not email or not password:
+            print(f"Registration failed: Missing credentials for {email}")
+            return jsonify({'success': False, 'message': 'Email or password missing'}), 400
+
+        # Проверка минимальной длины пароля
+        if len(password) < 4:
+            print(f"Registration failed: Password too short for {email}")
+            return jsonify({'success': False, 'message': 'Пароль должен содержать минимум 4 символа'}), 400
+
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                # Проверяем, существует ли уже пользователь с таким email
+                check_sql = "SELECT * FROM users WHERE email=%s"
+                cursor.execute(check_sql, (email,))
+                if cursor.fetchone() is not None:
+                    conn.close()
+                    print(f"Registration failed: User {email} already exists")
+                    return jsonify({'success': False, 'message': 'Пользователь с таким email уже существует'}), 409
+
+
+                insert_sql = "INSERT INTO users (email, password, name) VALUES (%s, %s, %s)"
+                cursor.execute(insert_sql, (email, hash_password(password), name))
+            conn.commit()
+            conn.close()
+            print(f"Registration successful for user: {email}")
+            return jsonify({'success': True, 'message': 'Пользователь успешно зарегистрирован'})
+        except Exception as e:
+            print(f"Database error during registration for {email}: {str(e)}")
+            return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Registration error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+# ---------------------------------------------------------------------
+# Добавлены новые эндпоинты для работы с рецептами (общими для всех пользователей)
+# Предполагается, что в базе данных существует таблица "recipes" со следующей структурой:
+# CREATE TABLE recipes (
+#     id INT AUTO_INCREMENT PRIMARY KEY,
+#     title VARCHAR(255) NOT NULL,
+#     ingredients TEXT NOT NULL,
+#     instructions TEXT NOT NULL,
+#     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+# );
+#
+# Эндпоинт POST /recipes - для создания нового рецепта.
+# Эндпоинт GET /recipes - для получения всех рецептов.
+
+# Эндпоинт для создания нового рецепта
+@app.route('/addrecipes', methods=['POST'])
+def create_recipe():
     data = request.get_json()
-    email = data.get('email')  # Извлекаем email
-    password = data.get('password')  # Извлекаем password
+    title = data.get('title')
+    ingredients = data.get('ingredients')
+    instructions = data.get('instructions')
+    creatId = data.get('userId')
+
+    # Проверяем, что все необходимые поля заполнены
+    if not (title and ingredients and instructions):
+        return jsonify({'success': False, 'message': 'Все поля (title, ingredients, instructions) обязательны'}), 400
 
     try:
-        # Открываем курсор для выполнения SQL-запроса.
-        with connection.cursor() as cursor:
-            # SQL-запрос для поиска пользователя с заданными email и password.
-            # Используем параметризованный запрос для защиты от SQL-инъекций.
-            sql = "SELECT * FROM users WHERE email=%s AND password=%s"
-            cursor.execute(sql, (email, password))
-            # Получаем первую запись из результата запроса.
-            result = cursor.fetchone()
-
-            # Если запись найдена, возвращаем JSON с ключом 'success' равным True.
-            if result:
-                return jsonify({'success': True})
-            else:
-                # Если записи нет, возвращаем JSON с 'success' равным False.
-                return jsonify({'success': False})
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            sql_insert = "INSERT INTO recipes (title, ingredients, instructions, user_id) VALUES (%s, %s, %s, %s)"
+            cursor.execute(sql_insert, (title, ingredients, instructions, creatId))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Рецепт успешно создан'})
     except Exception as e:
-        # В случае ошибки выводим сообщение в консоль и возвращаем ошибку 500 с описанием.
-        print("Ошибка запроса к базе данных:", e)
+        print("Ошибка при создании рецепта:", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-# Основной блок запуска сервера.
-# Сервер будет работать на порту 3000. Режим debug=True используется только в процессе разработки.
+
+@app.route('/deliterecipe', methods=['POST'])
+def delite_recipe():
+    data = request.get_json()
+    id = data.get('id')
+    user_id = data.get('userId')
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            sql_insert = "DELETE FROM recipes WHERE id = %s and user_id = %s;"
+            cursor.execute(sql_insert, (id, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Рецепт удален'})
+    except Exception as e:
+        print("Ошибка при создании рецепта:", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# Дополним эндпоинт для получения рецептов с более подробным логированием
+@app.route('/recipes', methods=['GET'])
+def get_recipes():
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Выводим полный список рецептов для отладки
+            cursor.execute("SELECT id, title FROM recipes ORDER BY id DESC")
+            all_recipes = cursor.fetchall()
+            print(f"Все рецепты в базе данных:")
+            for recipe in all_recipes:
+                print(f"ID: {recipe['id']} - {recipe['title']}")
+
+            # Получаем рецепты без ограничений, добавляем user_id в запрос
+            cursor.execute("SELECT id, title, ingredients, instructions, created_at, user_id FROM recipes ORDER BY id DESC")
+            recipes = cursor.fetchall()
+
+            # Конвертируем datetime объекты в строки для JSON
+            for recipe in recipes:
+                if 'created_at' in recipe and recipe['created_at']:
+                    recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                # Убедимся, что user_id доступен в ответе
+                if 'user_id' in recipe:
+                    print(f"Recipe ID: {recipe['id']} created by user: {recipe['user_id']}")
+
+            # Выводим детали для отладки
+            print(f"Найдено {len(recipes)} рецептов для отправки клиенту")
+
+            # Формируем ответ
+            response = {
+                'success': True,
+                'recipes': recipes,
+                'count': len(recipes)
+            }
+
+        conn.close()
+        return jsonify(response)
+    except Exception as e:
+        print(f"Ошибка при получении рецептов: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Ошибка сервера: {str(e)}',
+            'recipes': []
+        }), 500
+
+
+# Запуск сервера
 if __name__ == '__main__':
-    app.run(port=3000, debug=True)
+    # Запускаем на всех интерфейсах (0.0.0.0) и на порту 19029
+    app.run(host='0.0.0.0', port=19029, debug=True)
