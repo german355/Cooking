@@ -37,7 +37,7 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
     }
 
     /**
-     * Заполняет карточку данными конкретного рецепта
+     * Заполняет карточку данными конкретного рецептa
      */
     @Override
     public void onBindViewHolder(@NonNull RecipeViewHolder holder, int position) {

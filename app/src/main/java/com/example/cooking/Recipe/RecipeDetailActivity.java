@@ -83,7 +83,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
                 @Override
                 public void onDeleteFailure(String error) {
                     // Обработка ошибки удаления рецепта
-                    Log.e("DeleteRecipe", "Ошибка удаления рецепта: " + error);
+                    Log.e("DeleteRecipe", "Ошибка удаления рецепта:  " + error);
                 }
             });
         });

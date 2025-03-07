@@ -49,7 +49,7 @@ public class LoginTask extends AsyncTask<String, Void, LoginTask.Result> {
     public LoginTask(LoginCallback callback) {
         this.callback = callback;
 
-        // Настраиваем клиент с повторами и логированием
+        // Настраиваем клиент с повторами
         this.client = new OkHttpClient.Builder()
                 .connectTimeout(20, TimeUnit.SECONDS)
                 .readTimeout(20, TimeUnit.SECONDS)

@@ -95,6 +95,7 @@ public class StartActivity extends AppCompatActivity implements LoginTask.LoginC
     public void onLoginSuccess(String userId, String userName) {
         runOnUiThread(() -> {
             try {
+
                 id.putString("userId", userId);
                 id.putString("userName", userName);
                 id.putBoolean("auth", true);

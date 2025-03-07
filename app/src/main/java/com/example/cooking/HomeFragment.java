@@ -46,6 +46,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         View view = inflater.inflate(R.layout.fragment_home, container, false);
         
         // Инициализация views
+
         recyclerView = view.findViewById(R.id.recycler_view);
         swipeRefreshLayout = view.findViewById(R.id.swipe_refresh);
         progressBar = view.findViewById(R.id.progress_bar);

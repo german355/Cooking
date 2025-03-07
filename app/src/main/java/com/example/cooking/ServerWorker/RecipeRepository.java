@@ -86,7 +86,7 @@ public class RecipeRepository {
     /**
      * Получает рецепты, сначала проверяя кэш, затем загружая с сервера.
      */
-    @SuppressLint("StaticFieldLeak")
+    @SuppressLint("StaticFieldLeak") //надо исправить
     public void getRecipes(RecipesCallback callback) {
         new AsyncTask<Void, Void, Result<List<Recipe>>>() {
             @Override

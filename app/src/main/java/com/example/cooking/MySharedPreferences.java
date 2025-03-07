@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 public class MySharedPreferences {
 
     // Имя файла настроек
+
     private static final String PREF_NAME = "acs";
 
     // Объект SharedPreferences и его редактор

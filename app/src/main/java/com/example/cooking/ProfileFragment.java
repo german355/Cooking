@@ -12,8 +12,8 @@ import android.widget.TextView;
 import androidx.fragment.app.Fragment;
 
 /**
- * Фрагмент для отображения профиля пользователя и настроек приложения.
- * Позволяет пользователю управлять своим аккаунтом и персональными данными.
+ * Фрагмент для отображения профиля пользователя и настроек приложения
+ * Позволяет пользователю управлять своим аккаунтом и персональными данными
  */
 public class ProfileFragment extends Fragment {
     private TextView nameProfile;

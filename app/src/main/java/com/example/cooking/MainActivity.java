@@ -69,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
                 topTitleTextView.setText(title);
             }
 
+
             if (selectedFragment != null) {
                 getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, selectedFragment)

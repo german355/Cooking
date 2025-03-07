@@ -85,7 +85,8 @@ public class AddRecipeActivity extends AppCompatActivity {
         String ingredients = ingredientsEditText.getText().toString().trim();
         String instructions = instructionsEditText.getText().toString().trim();
         String id = user.getString("userId", "99");
-        
+
+
         Log.d(TAG, "saveRecipe: Получены данные - title: " + title + 
                 ", ingredients length: " + ingredients.length() + 
                 ", instructions length: " + instructions.length() + 
