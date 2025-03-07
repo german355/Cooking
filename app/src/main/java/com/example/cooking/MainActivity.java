@@ -1,9 +1,17 @@
 package com.example.cooking;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
+import com.example.cooking.ServerWorker.AddRecipeActivity;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import android.widget.TextView;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import android.view.View;
+import com.google.android.material.textfield.TextInputLayout;
+import com.google.android.material.button.MaterialButton;
 
 /**
  * Главная активность приложения.
@@ -11,6 +19,10 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
  */
 public class MainActivity extends AppCompatActivity {
     private BottomNavigationView bottomNavigationView;
+    private TextView topTitleTextView;
+    private FloatingActionButton addButton;
+    private TextInputLayout searchInputLayout;
+    private MaterialButton searchButton;
 
     /**
      * Вызывается при создании активности.
@@ -21,33 +33,78 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        // Инициализация компонентов поиска
+        searchInputLayout = findViewById(R.id.search_input_layout);
+        searchButton = findViewById(R.id.search_button);
+
         // Настройка нижней навигации
         bottomNavigationView = findViewById(R.id.bottom_navigation);
         bottomNavigationView.setOnItemSelectedListener(item -> {
             Fragment selectedFragment = null;
+            String title = "";
+
             int itemId = item.getItemId();
-            
-            // Выбор нужного фрагмента в зависимости от нажатой кнопки
             if (itemId == R.id.nav_home) {
                 selectedFragment = new HomeFragment();
+                title = "Главная";
+                // Показываем поле поиска на главной странице
+                searchInputLayout.setVisibility(View.VISIBLE);
+                searchButton.setVisibility(View.VISIBLE);
             } else if (itemId == R.id.nav_favorites) {
                 selectedFragment = new FavoritesFragment();
+                title = "Избранное";
+                // Показываем поле поиска в избранном
+                searchInputLayout.setVisibility(View.VISIBLE);
+                searchButton.setVisibility(View.VISIBLE);
             } else if (itemId == R.id.nav_profile) {
                 selectedFragment = new ProfileFragment();
+                title = "Профиль";
+                // Скрываем поле поиска в профиле
+                searchInputLayout.setVisibility(View.GONE);
+                searchButton.setVisibility(View.GONE);
             }
 
-            // Замена текущего фрагмента на выбранный
+            // Обновляем заголовок в зависимости от выбранного фрагмента
+            if (title != null && !title.isEmpty()) {
+                topTitleTextView.setText(title);
+            }
+
             if (selectedFragment != null) {
                 getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, selectedFragment)
                     .commit();
+                return true;
             }
-            return true;
+            return false;
+        });
+
+        // Инициализируем TextView
+        topTitleTextView = findViewById(R.id.topTitleTextView);
+        
+        // Инициализируем и настраиваем кнопку добавления
+        addButton = findViewById(R.id.fab_add);
+        addButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                // Здесь будет код для обработки нажатия на кнопку
+                Toast.makeText(MainActivity.this, "Добавление нового рецепта", Toast.LENGTH_SHORT).show();
+                Intent intent = new Intent(MainActivity.this, AddRecipeActivity.class);
+                startActivity(intent);
+            }
         });
 
         // Установка начального фрагмента при запуске
-        getSupportFragmentManager().beginTransaction()
-            .replace(R.id.fragment_container, new HomeFragment())
-            .commit();
+        if (savedInstanceState == null) {
+            getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_container, new HomeFragment())
+                .commit();
+            
+            // Устанавливаем начальный заголовок
+            topTitleTextView.setText("Главная");
+            
+            // Показываем поле поиска при запуске (так как начальный фрагмент - Home)
+            searchInputLayout.setVisibility(View.VISIBLE);
+            searchButton.setVisibility(View.VISIBLE);
+        }
     }
 }
