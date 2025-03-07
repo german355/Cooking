@@ -60,8 +60,6 @@ public class RegistrationTask extends AsyncTask<String, Void, RegistrationTask.R
                 .build();
     }
 
-
-
     @Override
     protected Result doInBackground(String... params) {
         if (params.length < 3) {

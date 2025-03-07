@@ -90,6 +90,7 @@ public class StartActivity extends AppCompatActivity implements LoginTask.LoginC
             }
         }
     }
+
     @Override
     public void onLoginSuccess(String userId, String userName) {
         runOnUiThread(() -> {

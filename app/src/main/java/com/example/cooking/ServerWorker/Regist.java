@@ -19,7 +19,6 @@ public class Regist extends AppCompatActivity implements RegistrationTask.Regist
     private Button regist;
     private TextView enter;
 
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
