@@ -71,7 +71,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
         
         // Настраиваем обработчик нажатия на кнопку удаления
         fab.setOnClickListener(view -> {
-            RecipeDeleter deleter = new RecipeDeleter();
+            RecipeDeleter deleter = new RecipeDeleter(this);
             deleter.deleteRecipe(recipeId, userId, new RecipeDeleter.DeleteRecipeCallback() {
                 @Override
                 public void onDeleteSuccess() {

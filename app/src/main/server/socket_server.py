@@ -1,8 +1,11 @@
 from flask import Flask, request, jsonify
 import pymysql
 import bcrypt
+from flask_socketio import SocketIO, emit
 
 app = Flask(__name__)
+
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 
 def hash_password(plain_password):
@@ -152,6 +155,8 @@ def create_recipe():
             cursor.execute(sql_insert, (title, ingredients, instructions, creatId))
         conn.commit()
         conn.close()
+        #Отправка уведомления пользователям
+        socketio.emit("new_recipe", 1)
         return jsonify({'success': True, 'message': 'Рецепт успешно создан'})
     except Exception as e:
         print("Ошибка при создании рецепта:", e)

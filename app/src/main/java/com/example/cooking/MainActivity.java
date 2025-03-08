@@ -21,8 +21,6 @@ public class MainActivity extends AppCompatActivity {
     private BottomNavigationView bottomNavigationView;
     private TextView topTitleTextView;
     private FloatingActionButton addButton;
-    private TextInputLayout searchInputLayout;
-    private MaterialButton searchButton;
 
     /**
      * Вызывается при создании активности.
@@ -32,10 +30,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        // Инициализация компонентов поиска
-        searchInputLayout = findViewById(R.id.search_input_layout);
-        searchButton = findViewById(R.id.search_button);
 
         // Настройка нижней навигации
         bottomNavigationView = findViewById(R.id.bottom_navigation);
@@ -47,21 +41,13 @@ public class MainActivity extends AppCompatActivity {
             if (itemId == R.id.nav_home) {
                 selectedFragment = new HomeFragment();
                 title = "Главная";
-                // Показываем поле поиска на главной странице
-                searchInputLayout.setVisibility(View.VISIBLE);
-                searchButton.setVisibility(View.VISIBLE);
             } else if (itemId == R.id.nav_favorites) {
                 selectedFragment = new FavoritesFragment();
                 title = "Избранное";
-                // Показываем поле поиска в избранном
-                searchInputLayout.setVisibility(View.VISIBLE);
-                searchButton.setVisibility(View.VISIBLE);
             } else if (itemId == R.id.nav_profile) {
                 selectedFragment = new ProfileFragment();
                 title = "Профиль";
-                // Скрываем поле поиска в профиле
-                searchInputLayout.setVisibility(View.GONE);
-                searchButton.setVisibility(View.GONE);
+
             }
 
             // Обновляем заголовок в зависимости от выбранного фрагмента
@@ -102,10 +88,7 @@ public class MainActivity extends AppCompatActivity {
             
             // Устанавливаем начальный заголовок
             topTitleTextView.setText("Главная");
-            
-            // Показываем поле поиска при запуске (так как начальный фрагмент - Home)
-            searchInputLayout.setVisibility(View.VISIBLE);
-            searchButton.setVisibility(View.VISIBLE);
+
         }
     }
 }

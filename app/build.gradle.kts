@@ -43,6 +43,7 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
+    implementation ("io.socket:socket.io-client:2.0.0")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
 }

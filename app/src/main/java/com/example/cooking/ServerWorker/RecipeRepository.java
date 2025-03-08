@@ -93,7 +93,7 @@ public class RecipeRepository {
             protected Result<List<Recipe>> doInBackground(Void... voids) {
                 // Сначала проверяем кэш
                 Result<List<Recipe>> cachedResult = loadFromCache();
-                if (cachedResult.isSuccess() && !isCacheExpired()) {
+                if (cachedResult.isSuccess() && !isCacheExpired() || Notification.reLoad()) {
                     Log.d(TAG, "Используем данные из кэша");
                     return cachedResult;
                 }

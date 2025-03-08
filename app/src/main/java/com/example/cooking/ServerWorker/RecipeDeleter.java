@@ -1,5 +1,6 @@
 package com.example.cooking.ServerWorker;
 
+import android.content.Context;
 import android.os.AsyncTask;
 import android.util.Log;
 import org.json.JSONObject;
@@ -16,6 +17,7 @@ public class RecipeDeleter {
     private static final String TAG = "RecipeDeleter";
     private static final String API_URL = "http://g3.veroid.network:19029";
     private final OkHttpClient client;
+    private final Context context;
 
     public interface DeleteRecipeCallback {
         void onDeleteSuccess();
@@ -24,10 +26,11 @@ public class RecipeDeleter {
 
 
 
-    public RecipeDeleter() {
+    public RecipeDeleter(Context context) {
         client = new OkHttpClient.Builder()
                 .retryOnConnectionFailure(true)
                 .build();
+        this.context = context;
     }
 
     public void deleteRecipe(final int recipeId, final String userId, final DeleteRecipeCallback callback) {
@@ -91,6 +94,10 @@ public class RecipeDeleter {
         protected void onPostExecute(Boolean success) {
             if (success) {
                 callback.onDeleteSuccess();
+                RecipeDeleter deleter = deleterRef.get();
+                RecipeRepository repository = new RecipeRepository(deleter.context);
+                repository.clearCache();
+                Log.d("Recipe", "Рецепт был удален");
             } else {
                 callback.onDeleteFailure(errorMessage);
             }
