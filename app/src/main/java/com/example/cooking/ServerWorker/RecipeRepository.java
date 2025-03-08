@@ -104,6 +104,7 @@ public class RecipeRepository {
                     Log.d(TAG, "Запрашиваем рецепты с сервера: " + API_URL + "/recipes");
                     Request request = new Request.Builder()
                             .url(API_URL + "/recipes")
+                            .header("Connection", "close")
                             .build();
                     
                     response = client.newCall(request).execute();

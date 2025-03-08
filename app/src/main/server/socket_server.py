@@ -1,3 +1,5 @@
+import os
+
 from flask import Flask, request, jsonify
 import pymysql
 import bcrypt
@@ -6,6 +8,13 @@ from flask_socketio import SocketIO, emit
 app = Flask(__name__)
 
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 
 def hash_password(plain_password):

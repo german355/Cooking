@@ -168,6 +168,7 @@ public class AddRecipeActivity extends AppCompatActivity {
                 Request request = new Request.Builder()
                         .url(url)
                         .post(body)
+                        .header("Connection", "close")
                         .build();
                 Log.d(TAG, "doInBackground: Подготовлен HTTP запрос к URL: " + url);
                 
