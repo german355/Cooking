@@ -22,6 +22,8 @@ import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
 import com.example.cooking.ServerWorker.AddRecipeActivity;
 import com.example.cooking.ServerWorker.RecipeRepository;
+import com.example.cooking.ServerWorker.RecipeSearchService;
+import android.widget.SearchView;
 
 /**
  * Фрагмент главного экрана.
@@ -46,12 +48,27 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         View view = inflater.inflate(R.layout.fragment_home, container, false);
         
         // Инициализация views
-
-
         recyclerView = view.findViewById(R.id.recycler_view);
         swipeRefreshLayout = view.findViewById(R.id.swipe_refresh);
         progressBar = view.findViewById(R.id.progress_bar);
         emptyView = view.findViewById(R.id.empty_view);
+        
+        // Инициализация и настройка SearchView
+        SearchView searchView = view.findViewById(R.id.search_view_main);
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String query) {
+                performSearch(query);
+                return true;
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                // Опционально: поиск при вводе текста
+                // performSearch(newText);
+                return true;
+            }
+        });
         
         // Настройка RecyclerView
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2));
@@ -165,6 +182,9 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
             Intent intent = new Intent(getActivity(), AddRecipeActivity.class);
             startActivity(intent);
             return true;
+        } else if (item.getItemId() == R.id.action_refresh) {
+            refreshFromServer();
+            return true;
         }
         return super.onOptionsItemSelected(item);
     }
@@ -230,12 +250,110 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
                 @Override
                 public void onDataNotAvailable(String error) {
                     // Если кэш недоступен, пробуем загрузить с сервера
-                    loadRecipes(false);
+                    Log.e(TAG, "Не удалось получить рецепты из кэша: " + error);
+                    
+                    if (isAdded()) {
+                        requireActivity().runOnUiThread(() -> {
+                            Toast.makeText(getContext(), "Загрузка рецептов с сервера...", Toast.LENGTH_SHORT).show();
+                            // Пробуем загрузить данные с сервера
+                            loadRecipes(false);
+                        });
+                    } else {
+                        // Если фрагмент не прикреплен, просто пытаемся загрузить с сервера
+                        loadRecipes(false);
+                    }
                 }
             });
         } else {
             // Пробуем загрузить только с сервера
             repository.getRecipesFromServer(this);
         }
+    }
+
+    /**
+     * Выполняет поиск рецептов по заданному запросу
+     * @param query текст запроса
+     */
+    public void performSearch(String query) {
+        Log.d(TAG, "Выполняется поиск: " + query);
+        showLoading(true);
+        
+        // Проверяем, что репозиторий инициализирован
+        if (repository == null) {
+            Log.e(TAG, "Ошибка: репозиторий не инициализирован");
+            showErrorMessage("Внутренняя ошибка приложения. Пожалуйста, перезапустите.");
+            return;
+        }
+        
+        // Создаем сервис поиска
+        RecipeSearchService searchService = new RecipeSearchService(repository);
+        
+        try {
+            // Выполняем поиск по заголовку и ингредиентам
+            searchService.searchByTitleAndIngredients(query, new RecipeSearchService.SearchCallback() {
+                @Override
+                public void onSearchResults(List<Recipe> recipes) {
+                    if (isAdded()) {
+                        requireActivity().runOnUiThread(() -> {
+                            showLoading(false);
+                            if (recipes == null || recipes.isEmpty()) {
+                                showEmptyView(true);
+                                emptyView.setText(getString(R.string.no_search_results, query));
+                            } else {
+                                showEmptyView(false);
+                                adapter.updateRecipes(recipes);
+                                Log.d(TAG, "Найдено рецептов: " + recipes.size());
+                            }
+                        });
+                    }
+                }
+
+                @Override
+                public void onSearchError(String error) {
+                    Log.e(TAG, "Ошибка поиска: " + error);
+                    if (isAdded()) {
+                        requireActivity().runOnUiThread(() -> {
+                            showLoading(false);
+                            showErrorMessage("Ошибка поиска: " + error);
+                        });
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Неожиданная ошибка при поиске: " + e.getMessage(), e);
+            if (isAdded()) {
+                requireActivity().runOnUiThread(() -> {
+                    showLoading(false);
+                    showErrorMessage("Неожиданная ошибка при поиске: " + e.getMessage());
+                });
+            }
+        }
+    }
+    
+    /**
+     * Показывает сообщение об ошибке
+     */
+    private void showErrorMessage(String message) {
+        showEmptyView(true);
+        emptyView.setText(message);
+        Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+    }
+
+    /**
+     * Принудительно обновляет данные с сервера, очищая кэш
+     */
+    private void refreshFromServer() {
+        if (isAdded()) {
+            Toast.makeText(getContext(), "Обновление данных с сервера...", Toast.LENGTH_SHORT).show();
+        }
+        
+        Log.d(TAG, "Принудительное обновление с сервера");
+        showLoading(true);
+        
+        // Сначала очищаем кэш
+        repository.clearCache();
+        
+        // Затем загружаем данные только с сервера
+        repository.getRecipesFromServer(this);
     }
 } 

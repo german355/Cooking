@@ -2,16 +2,17 @@ package com.example.cooking;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SearchView;
 import androidx.fragment.app.Fragment;
 import com.example.cooking.ServerWorker.AddRecipeActivity;
+import com.example.cooking.ServerWorker.RecipeSearchService;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
-import android.widget.TextView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import android.view.View;
-import com.google.android.material.textfield.TextInputLayout;
-import com.google.android.material.button.MaterialButton;
 
 /**
  * Главная активность приложения.
@@ -19,8 +20,8 @@ import com.google.android.material.button.MaterialButton;
  */
 public class MainActivity extends AppCompatActivity {
     private BottomNavigationView bottomNavigationView;
-    private TextView topTitleTextView;
     private FloatingActionButton addButton;
+    private Fragment currentFragment;
 
     /**
      * Вызывается при создании активности.
@@ -35,60 +36,82 @@ public class MainActivity extends AppCompatActivity {
         bottomNavigationView = findViewById(R.id.bottom_navigation);
         bottomNavigationView.setOnItemSelectedListener(item -> {
             Fragment selectedFragment = null;
-            String title = "";
 
             int itemId = item.getItemId();
             if (itemId == R.id.nav_home) {
                 selectedFragment = new HomeFragment();
-                title = "Главная";
             } else if (itemId == R.id.nav_favorites) {
                 selectedFragment = new FavoritesFragment();
-                title = "Избранное";
             } else if (itemId == R.id.nav_profile) {
                 selectedFragment = new ProfileFragment();
-                title = "Профиль";
-
             }
-
-            // Обновляем заголовок в зависимости от выбранного фрагмента
-            if (title != null && !title.isEmpty()) {
-                topTitleTextView.setText(title);
-            }
-
 
             if (selectedFragment != null) {
+                currentFragment = selectedFragment;
                 getSupportFragmentManager().beginTransaction()
-                    .replace(R.id.fragment_container, selectedFragment)
-                    .commit();
+                        .replace(R.id.fragment_container, selectedFragment)
+                        .commit();
                 return true;
             }
             return false;
         });
 
-        // Инициализируем TextView
-        topTitleTextView = findViewById(R.id.topTitleTextView);
-        
         // Инициализируем и настраиваем кнопку добавления
         addButton = findViewById(R.id.fab_add);
         addButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                // Здесь будет код для обработки нажатия на кнопку
                 Toast.makeText(MainActivity.this, "Добавление нового рецепта", Toast.LENGTH_SHORT).show();
                 Intent intent = new Intent(MainActivity.this, AddRecipeActivity.class);
                 startActivity(intent);
             }
         });
 
-        // Установка начального фрагмента при запуске
         if (savedInstanceState == null) {
+            currentFragment = new HomeFragment();
             getSupportFragmentManager().beginTransaction()
-                .replace(R.id.fragment_container, new HomeFragment())
-                .commit();
-            
-            // Устанавливаем начальный заголовок
-            topTitleTextView.setText("Главная");
+                    .replace(R.id.fragment_container, currentFragment)
+                    .commit();
+        }
+    }
 
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_recipes, menu);
+        
+        // Комментируем обработку поиска через меню, так как поиск теперь делается через SearchView во фрагментах
+        /*
+        // Настройка поиска
+        MenuItem searchItem = menu.findItem(R.id.action_search);
+        SearchView searchView = (SearchView) searchItem.getActionView();
+        
+        searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
+            @Override
+            public boolean onQueryTextSubmit(String query) {
+                performSearch(query);
+                return true;
+            }
+
+            @Override
+            public boolean onQueryTextChange(String newText) {
+                // Если хотите делать поиск в реальном времени, раскомментируйте строку ниже
+                // performSearch(newText);
+                return true;
+            }
+        });
+        */
+        
+        return true;
+    }
+    
+    /**
+     * Выполняет поиск, передавая запрос в текущий активный фрагмент
+     */
+    private void performSearch(String query) {
+        if (currentFragment instanceof HomeFragment) {
+            ((HomeFragment) currentFragment).performSearch(query);
+        } else if (currentFragment instanceof FavoritesFragment) {
+            ((FavoritesFragment) currentFragment).performSearch(query);
         }
     }
 }

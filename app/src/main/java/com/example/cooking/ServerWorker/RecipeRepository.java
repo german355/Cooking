@@ -29,7 +29,9 @@ public class RecipeRepository {
     private static final String LAST_UPDATE_TIME_KEY = "recipes_last_update_time";
     // 4 минуты в миллисекундах
     private static final long CACHE_EXPIRATION_TIME = (60 * 60 * 1000) / 15;
-    private MySharedPreferences mySharedPreferences;
+    
+    // Константы для имени файла настроек
+    private static final String PREF_NAME = "recipe_cache";
     
     private final Context context;
     private final OkHttpClient client;
@@ -48,44 +50,10 @@ public class RecipeRepository {
         // Настраиваем OkHttpClient с более надежными параметрами
         this.client = new OkHttpClient.Builder()
                 .retryOnConnectionFailure(true)  // Включаем автоматические повторные попытки
-                .addInterceptor(chain -> {
-                    Request originalRequest = chain.request();
-                    Request request = originalRequest.newBuilder()
-                            .header("Connection", "close")
-                            .build();
-                    Response response = null;
-                    IOException exception = null;
-                    int tryCount = 0;
-                    
-                    while (tryCount < 3 && (response == null || !response.isSuccessful())) {
-                        try {
-                            if (response != null) {
-                                response.close(); // Закрываем предыдущий ответ
-                            }
-                            
-                            // Небольшая задержка перед повторной попыткой
-                            if (tryCount > 0) {
-                                Thread.sleep(1000 * tryCount);
-                            }
-                            
-                            response = chain.proceed(request);
-                            exception = null;  // Сбрасываем исключение при успешном запросе
-                        } catch (IOException e) {
-                            exception = e;
-                            Log.w(TAG, "Попытка " + (tryCount + 1) + " не удалась: " + e.getMessage());
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
-                        tryCount++;
-                    }
-                    
-                    if (response != null) {
-                        return response;
-                    } else {
-                        throw exception != null ? exception : new IOException("Все попытки соединения не удались");
-                    }
-                })
+                .connectTimeout(20, TimeUnit.SECONDS)  // Увеличиваем таймаут соединения
+                .readTimeout(20, TimeUnit.SECONDS)     // Увеличиваем таймаут чтения
+                .writeTimeout(20, TimeUnit.SECONDS)    // Увеличиваем таймаут записи
+                .connectionPool(new ConnectionPool(0, 1, TimeUnit.MINUTES))  // Настройка пула соединений
                 .build();
     }
     
@@ -267,22 +235,27 @@ public class RecipeRepository {
                 recipeJson.put("ingredients", recipe.getIngredients());
                 recipeJson.put("instructions", recipe.getInstructions());
                 recipeJson.put("created_at", recipe.getCreated_at());
-                // Добавляем сохранение userId
                 recipeJson.put("userId", recipe.getUserId());
                 recipeJson.put("photo", recipe.getPhoto_url());
 
                 recipesArray.put(recipeJson);
             }
             
-            SharedPreferences prefs = context.getSharedPreferences("RecipeCache", Context.MODE_PRIVATE);
+            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = prefs.edit();
             editor.putString(RECIPES_CACHE_KEY, recipesArray.toString());
             editor.putLong(LAST_UPDATE_TIME_KEY, System.currentTimeMillis());
-            editor.apply();
+            boolean success = editor.commit(); // Используем commit() вместо apply() для синхронного сохранения
             
-            Log.d(TAG, "Recipes cached: " + recipes.size());
+            if (success) {
+                Log.d(TAG, "Recipes cached successfully: " + recipes.size());
+            } else {
+                Log.e(TAG, "Failed to save recipes to cache");
+            }
         } catch (JSONException e) {
-            Log.e(TAG, "Error caching recipes", e);
+            Log.e(TAG, "Error caching recipes: " + e.getMessage(), e);
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error when caching recipes: " + e.getMessage(), e);
         }
     }
     
@@ -290,33 +263,72 @@ public class RecipeRepository {
      * Загружает рецепты из кэша.
      */
     private Result<List<Recipe>> loadFromCache() {
-        SharedPreferences prefs = context.getSharedPreferences("RecipeCache", Context.MODE_PRIVATE);
-        String cachedRecipes = prefs.getString(RECIPES_CACHE_KEY, null);
-        
-        if (cachedRecipes != null) {
-            try {
-                List<Recipe> recipes = parseRecipesJson(
-                        new JSONObject().put("success", true)
-                                .put("recipes", new JSONArray(cachedRecipes))
-                                .toString()
-                );
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+            String cachedRecipes = prefs.getString(RECIPES_CACHE_KEY, null);
+            
+            if (cachedRecipes != null && !cachedRecipes.isEmpty()) {
+                JSONArray recipesArray = new JSONArray(cachedRecipes);
+                List<Recipe> recipes = new ArrayList<>();
+                
+                for (int i = 0; i < recipesArray.length(); i++) {
+                    JSONObject recipeJson = recipesArray.getJSONObject(i);
+                    
+                    Recipe recipe = new Recipe();
+                    
+                    // Установка ID (преобразуем String в int)
+                    try {
+                        recipe.setId(Integer.parseInt(recipeJson.optString("id", "0")));
+                    } catch (NumberFormatException e) {
+                        Log.w(TAG, "Ошибка при парсинге ID рецепта: " + e.getMessage());
+                        recipe.setId(0); // Устанавливаем значение по умолчанию
+                    }
+                    
+                    recipe.setTitle(recipeJson.optString("title", ""));
+                    recipe.setIngredients(recipeJson.optString("ingredients", ""));
+                    recipe.setInstructions(recipeJson.optString("instructions", ""));
+                    recipe.setPhoto_url(recipeJson.optString("photo", ""));
+                    recipe.setCreated_at(recipeJson.optString("created_at", ""));
+                    recipe.setUserId(recipeJson.optString("userId", ""));
+                    
+                    recipes.add(recipe);
+                }
+                
                 Log.d(TAG, "Loaded " + recipes.size() + " recipes from cache");
                 return new Result.Success<>(recipes);
-            } catch (JSONException e) {
-                Log.e(TAG, "Error loading recipes from cache", e);
+            } else {
+                Log.d(TAG, "Cache is empty or null");
+                return new Result.Error<>("Кэш пуст");
             }
+        } catch (JSONException e) {
+            Log.e(TAG, "Error parsing JSON from cache: " + e.getMessage(), e);
+            return new Result.Error<>("Ошибка при чтении кэша: " + e.getMessage());
+        } catch (Exception e) {
+            Log.e(TAG, "Unexpected error when loading from cache: " + e.getMessage(), e);
+            return new Result.Error<>("Неожиданная ошибка при чтении кэша: " + e.getMessage());
         }
-        
-        return new Result.Error<>("Кэш пуст");
     }
     
     /**
      * Проверяет, истек ли срок действия кэша.
      */
     private boolean isCacheExpired() {
-        SharedPreferences prefs = context.getSharedPreferences("RecipeCache", Context.MODE_PRIVATE);
-        long lastUpdateTime = prefs.getLong(LAST_UPDATE_TIME_KEY, 0);
-        return System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+            long lastUpdateTime = prefs.getLong(LAST_UPDATE_TIME_KEY, 0);
+            boolean expired = System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+            
+            Log.d(TAG, "Cache expired: " + expired + 
+                    " (last update: " + lastUpdateTime + 
+                    ", current time: " + System.currentTimeMillis() + 
+                    ", diff: " + (System.currentTimeMillis() - lastUpdateTime) + 
+                    ", expiration time: " + CACHE_EXPIRATION_TIME + ")");
+            
+            return expired;
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking cache expiration: " + e.getMessage(), e);
+            return true; // в случае ошибки считаем, что кэш устарел
+        }
     }
     
     /**
@@ -425,12 +437,21 @@ public class RecipeRepository {
      * Очищает кэш рецептов.
      */
     public void clearCache() {
-        SharedPreferences prefs = context.getSharedPreferences("RecipeCache", Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.remove(RECIPES_CACHE_KEY);
-        editor.remove(LAST_UPDATE_TIME_KEY);
-        editor.apply();
-        Log.d(TAG, "Кэш рецептов очищен");
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.remove(RECIPES_CACHE_KEY);
+            editor.remove(LAST_UPDATE_TIME_KEY);
+            boolean success = editor.commit();
+            
+            if (success) {
+                Log.d(TAG, "Cache cleared successfully");
+            } else {
+                Log.e(TAG, "Failed to clear cache");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error clearing cache: " + e.getMessage(), e);
+        }
     }
     
     /**
@@ -442,17 +463,39 @@ public class RecipeRepository {
             @Override
             protected Result<List<Recipe>> doInBackground(Void... voids) {
                 Log.d(TAG, "Загружаем рецепты только из кэша");
-                return loadFromCache();
+                try {
+                    Result<List<Recipe>> result = loadFromCache();
+                    if (result.isSuccess()) {
+                        Result.Success<List<Recipe>> success = (Result.Success<List<Recipe>>) result;
+                        Log.d(TAG, "Успешно загружено из кэша: " + success.getData().size() + " рецептов");
+                    } else {
+                        Result.Error<List<Recipe>> error = (Result.Error<List<Recipe>>) result;
+                        Log.e(TAG, "Ошибка загрузки из кэша: " + error.getErrorMessage());
+                    }
+                    return result;
+                } catch (Exception e) {
+                    Log.e(TAG, "Неожиданная ошибка при доступе к кэшу: " + e.getMessage(), e);
+                    return new Result.Error<>("Неожиданная ошибка при доступе к кэшу: " + e.getMessage());
+                }
             }
             
             @Override
             protected void onPostExecute(Result<List<Recipe>> result) {
-                if (result.isSuccess()) {
-                    Result.Success<List<Recipe>> success = (Result.Success<List<Recipe>>) result;
-                    callback.onRecipesLoaded(success.getData());
-                } else {
-                    Result.Error<List<Recipe>> error = (Result.Error<List<Recipe>>) result;
-                    callback.onDataNotAvailable(error.getErrorMessage());
+                try {
+                    if (result.isSuccess()) {
+                        Result.Success<List<Recipe>> success = (Result.Success<List<Recipe>>) result;
+                        List<Recipe> recipes = success.getData();
+                        Log.d(TAG, "onPostExecute: возвращаем " + recipes.size() + " рецептов из кэша");
+                        callback.onRecipesLoaded(recipes);
+                    } else {
+                        Result.Error<List<Recipe>> error = (Result.Error<List<Recipe>>) result;
+                        String errorMessage = error.getErrorMessage();
+                        Log.e(TAG, "onPostExecute: ошибка загрузки из кэша: " + errorMessage);
+                        callback.onDataNotAvailable(errorMessage);
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "onPostExecute: неожиданная ошибка: " + e.getMessage(), e);
+                    callback.onDataNotAvailable("Неожиданная ошибка: " + e.getMessage());
                 }
             }
         }.execute();
@@ -595,6 +638,20 @@ public class RecipeRepository {
                 }
             }
         }.execute();
+    }
+    
+    /**
+     * Получает рецепты из кэша синхронно.
+     * @return Result с рецептами или сообщением об ошибке
+     */
+    public Result<List<Recipe>> getRecipesFromCacheSync() {
+        Log.d(TAG, "Синхронная загрузка рецептов из кэша");
+        try {
+            return loadFromCache();
+        } catch (Exception e) {
+            Log.e(TAG, "Ошибка при синхронной загрузке из кэша: " + e.getMessage(), e);
+            return new Result.Error<>("Ошибка при загрузке из кэша: " + e.getMessage());
+        }
     }
     
     /**

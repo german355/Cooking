@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.os.AsyncTask;
 import android.util.Log;
 import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.ServerWorker.RecipeRepository.Result;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -63,38 +64,32 @@ public class RecipeSearchService {
         @Override
         protected List<Recipe> doInBackground(Void... voids) {
             Log.d(TAG, "Поиск рецептов по названию: " + query);
-            final List<Recipe>[] result = new List[1];
-            final String[] error = new String[1];
-
-            // Получаем рецепты из кэша
-            repository.getRecipesFromCache(new RecipeRepository.RecipesCallback() {
-                @Override
-                public void onRecipesLoaded(List<Recipe> recipes) {
-                    result[0] = recipes;
-                }
-
-                @Override
-                public void onDataNotAvailable(String errorMsg) {
-                    error[0] = errorMsg;
-                }
-            });
-
-            // Проверяем, получили ли мы рецепты
-            if (result[0] == null) {
-                errorMessage = error[0] != null ? error[0] : "Не удалось получить рецепты из кэша";
+            
+            // Синхронно получаем рецепты из кэша
+            Result<List<Recipe>> result = repository.getRecipesFromCacheSync();
+            
+            if (!result.isSuccess()) {
+                RecipeRepository.Result.Error<List<Recipe>> error = 
+                    (RecipeRepository.Result.Error<List<Recipe>>) result;
+                errorMessage = error.getErrorMessage();
+                Log.e(TAG, "Ошибка при загрузке рецептов из кэша: " + errorMessage);
                 return null;
             }
-
+            
+            RecipeRepository.Result.Success<List<Recipe>> success = 
+                (RecipeRepository.Result.Success<List<Recipe>>) result;
+            List<Recipe> recipes = success.getData();
+            
             // Если запрос пустой, возвращаем все рецепты
             if (query == null || query.trim().isEmpty()) {
-                return result[0];
+                return recipes;
             }
 
             // Фильтруем рецепты по названию
             List<Recipe> filteredRecipes = new ArrayList<>();
             String lowerCaseQuery = query.toLowerCase().trim();
 
-            for (Recipe recipe : result[0]) {
+            for (Recipe recipe : recipes) {
                 if (recipe.getTitle().toLowerCase().contains(lowerCaseQuery)) {
                     filteredRecipes.add(recipe);
                 }
@@ -134,39 +129,33 @@ public class RecipeSearchService {
 
         @Override
         protected List<Recipe> doInBackground(Void... voids) {
-            Log.d(TAG, "Расширенный поиск рецептов: " + query);
-            final List<Recipe>[] result = new List[1];
-            final String[] error = new String[1];
-
-            // Получаем рецепты из кэша
-            repository.getRecipesFromCache(new RecipeRepository.RecipesCallback() {
-                @Override
-                public void onRecipesLoaded(List<Recipe> recipes) {
-                    result[0] = recipes;
-                }
-
-                @Override
-                public void onDataNotAvailable(String errorMsg) {
-                    error[0] = errorMsg;
-                }
-            });
-
-            // Проверяем, получили ли мы рецепты
-            if (result[0] == null) {
-                errorMessage = error[0] != null ? error[0] : "Не удалось получить рецепты из кэша";
+            Log.d(TAG, "Поиск рецептов по названию и ингредиентам: " + query);
+            
+            // Синхронно получаем рецепты из кэша
+            Result<List<Recipe>> result = repository.getRecipesFromCacheSync();
+            
+            if (!result.isSuccess()) {
+                RecipeRepository.Result.Error<List<Recipe>> error = 
+                    (RecipeRepository.Result.Error<List<Recipe>>) result;
+                errorMessage = error.getErrorMessage();
+                Log.e(TAG, "Ошибка при загрузке рецептов из кэша: " + errorMessage);
                 return null;
             }
-
+            
+            RecipeRepository.Result.Success<List<Recipe>> success = 
+                (RecipeRepository.Result.Success<List<Recipe>>) result;
+            List<Recipe> recipes = success.getData();
+            
             // Если запрос пустой, возвращаем все рецепты
             if (query == null || query.trim().isEmpty()) {
-                return result[0];
+                return recipes;
             }
 
             // Фильтруем рецепты по названию и ингредиентам
             List<Recipe> filteredRecipes = new ArrayList<>();
             String lowerCaseQuery = query.toLowerCase().trim();
 
-            for (Recipe recipe : result[0]) {
+            for (Recipe recipe : recipes) {
                 if (recipe.getTitle().toLowerCase().contains(lowerCaseQuery) || 
                     recipe.getIngredients().toLowerCase().contains(lowerCaseQuery)) {
                     filteredRecipes.add(recipe);
