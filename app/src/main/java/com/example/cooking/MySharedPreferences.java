@@ -58,6 +58,13 @@ public class MySharedPreferences {
         editor.putBoolean(key, value);
         editor.apply();
     }
+    public void putLong(String key, long value) {
+        editor.putLong(key, value);
+        editor.apply();
+    }
+    public long getLong(String key, long defaultValue) {
+        return sharedPreferences.getLong(key, defaultValue);
+    }
 
     // Получение булевого значения по ключу, если значение отсутствует — возвращается defaultValue
     public boolean getBoolean(String key, boolean defaultValue) {

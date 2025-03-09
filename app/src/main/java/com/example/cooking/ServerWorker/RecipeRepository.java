@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.util.Log;
+import com.example.cooking.MySharedPreferences;
 import com.example.cooking.Recipe.Recipe;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -15,6 +16,8 @@ import java.util.List;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import java.util.concurrent.TimeUnit;
+import okhttp3.ConnectionPool;
 
 /**
  * Репозиторий для управления данными рецептов.
@@ -26,6 +29,7 @@ public class RecipeRepository {
     private static final String LAST_UPDATE_TIME_KEY = "recipes_last_update_time";
     // 4 минуты в миллисекундах
     private static final long CACHE_EXPIRATION_TIME = (60 * 60 * 1000) / 15;
+    private MySharedPreferences mySharedPreferences;
     
     private final Context context;
     private final OkHttpClient client;
@@ -45,8 +49,10 @@ public class RecipeRepository {
         this.client = new OkHttpClient.Builder()
                 .retryOnConnectionFailure(true)  // Включаем автоматические повторные попытки
                 .addInterceptor(chain -> {
-                    // Добавляем перехватчик для автоматических повторений запросов
-                    Request request = chain.request();
+                    Request originalRequest = chain.request();
+                    Request request = originalRequest.newBuilder()
+                            .header("Connection", "close")
+                            .build();
                     Response response = null;
                     IOException exception = null;
                     int tryCount = 0;
@@ -110,7 +116,7 @@ public class RecipeRepository {
                     response = client.newCall(request).execute();
                     
                     // Проверка ответа для безопасности
-                    if (response != null && response.body() != null) {
+                    if (response.body() != null) {
                         try {
                             // Безопасно читаем тело ответа
                             String responseBody = response.body().string();
@@ -219,14 +225,13 @@ public class RecipeRepository {
                         
                         Recipe recipe = new Recipe();
                         recipe.setId(recipeJson.optInt("id", 0));
-                        String userId = recipeJson.optString("userId",
-                                recipeJson.optString("user_id", "99"));
+                        String userId = recipeJson.optString("userId", recipeJson.optString("user_id", "99"));
                         recipe.setUserId(userId);
-                        Log.d("Id", recipeJson.optString("userId", "-1" ));
                         recipe.setTitle(recipeJson.optString("title", "Без названия"));
                         recipe.setIngredients(recipeJson.optString("ingredients", ""));
                         recipe.setInstructions(recipeJson.optString("instructions", ""));
                         recipe.setCreated_at(recipeJson.optString("created_at", ""));
+                        recipe.setPhoto_url(recipeJson.optString("photo", ""));
                         
                         Log.d(TAG, "Рецепт [" + i + "] обработан: " + recipe.getId() + " - " + recipe.getTitle());
                         recipes.add(recipe);
@@ -264,6 +269,8 @@ public class RecipeRepository {
                 recipeJson.put("created_at", recipe.getCreated_at());
                 // Добавляем сохранение userId
                 recipeJson.put("userId", recipe.getUserId());
+                recipeJson.put("photo", recipe.getPhoto_url());
+
                 recipesArray.put(recipeJson);
             }
             
@@ -327,6 +334,7 @@ public class RecipeRepository {
                     Log.d(TAG, "Принудительно обновляем рецепты с сервера");
                     Request request = new Request.Builder()
                             .url(API_URL + "/recipes")
+                            .header("Connection", "close")
                             .build();
                     
                     Response response = null;
@@ -411,7 +419,7 @@ public class RecipeRepository {
                 }
             }
         }.execute();
-    }
+    } // пока не используется но надо правильно придумать сценарий
     
     /**
      * Очищает кэш рецептов.
@@ -526,48 +534,56 @@ public class RecipeRepository {
         new AsyncTask<Void, Void, Result<List<Recipe>>>() {
             @Override
             protected Result<List<Recipe>> doInBackground(Void... voids) {
+                Response response = null;
+                // Создаем отдельный клиент с отключенным пулом соединений
+                OkHttpClient refreshClient = new OkHttpClient.Builder()
+                        .connectionPool(new ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
+                        .retryOnConnectionFailure(true)
+                        .build();
                 try {
                     Log.d(TAG, "Фоновое обновление рецептов");
                     Request request = new Request.Builder()
                             .url(API_URL + "/recipes")
-                            .header("Connection", "close") // Отключаем повторное использование соединения
+                            .header("Connection", "close") // гарантируем закрытие соединения после запроса
                             .build();
-                    
-                    Response response = null;
-                    try {
-                        response = client.newCall(request).execute();
-                        
-                        if (response != null && response.body() != null) {
-                            try {
-                                String responseBody = response.body().string();
-                                
-                                if (response.isSuccessful() && responseBody.length() > 0) {
-                                    List<Recipe> recipes = parseRecipesJson(responseBody);
-                                    Log.d(TAG, "Фоново загружено рецептов: " + recipes.size());
-                                    
-                                    if (!recipes.isEmpty()) {
-                                        saveToCache(recipes);
-                                        return new Result.Success<>(recipes);
-                                    }
+
+                    response = refreshClient.newCall(request).execute();
+
+                    if (response != null && response.body() != null) {
+                        try {
+                            String responseBody = response.body().string();
+
+                            if (response.isSuccessful() && responseBody.length() > 0) {
+                                List<Recipe> recipes = parseRecipesJson(responseBody);
+                                Log.d(TAG, "Фоново загружено рецептов: " + recipes.size());
+
+                                if (!recipes.isEmpty()) {
+                                    saveToCache(recipes);
+                                    return new Result.Success<>(recipes);
                                 }
-                            } catch (IOException e) {
-                                Log.w(TAG, "Ошибка при фоновом обновлении: " + e.getMessage());
+                            } else {
+                                Log.e(TAG, "Ошибка HTTP: " + response.code() + " " + response.message());
+                                return new Result.Error<>("Ошибка сервера: " + response.code());
                             }
+                        } catch (IOException e) {
+                            Log.e(TAG, "Ошибка при чтении тела ответа", e);
+                            return new Result.Error<>("Ошибка чтения ответа: " + e.getMessage());
                         }
-                    } finally {
-                        if (response != null) {
-                            response.close();
-                        }
+                    } else {
+                        Log.e(TAG, "Получен пустой ответ");
+                        return new Result.Error<>("Пустой ответ от сервера");
                     }
-                    
-                    // Возвращаем ошибку если что-то пошло не так
-                    return new Result.Error<>("Не удалось обновить данные");
-                } catch (Exception e) {
-                    Log.w(TAG, "Исключение при фоновом обновлении: " + e.getMessage());
-                    return new Result.Error<>(e.getMessage());
+                } catch (IOException e) {
+                    Log.e(TAG, "Сетевая ошибка при загрузке рецептов", e);
+                    return new Result.Error<>("Сетевая ошибка: " + e.getMessage());
+                } finally {
+                    if (response != null) {
+                        response.close();
+                    }
                 }
+                return new Result.Error<>("Ошибка");
             }
-            
+
             @Override
             protected void onPostExecute(Result<List<Recipe>> result) {
                 if (result.isSuccess()) {

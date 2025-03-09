@@ -12,6 +12,15 @@ public class Recipe {
     private String instructions;
     private String created_at;
     private String userId;
+    private String photo_url;
+
+    public String getPhoto_url() {
+        return photo_url;
+    }
+
+    public void setPhoto_url(String photo_url) {
+        this.photo_url = photo_url;
+    }
 
     public String getUserId() {
         return userId;
