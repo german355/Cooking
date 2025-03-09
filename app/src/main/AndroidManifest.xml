@@ -17,6 +17,12 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="31">
+        
+        <!-- Meta-data для предзагрузки шрифтов -->
+        <meta-data
+            android:name="preloaded_fonts"
+            android:resource="@array/preloaded_fonts" />
+        
         <activity
             android:name=".StartActivity"
             android:exported="true">

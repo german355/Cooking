@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Стиль для SearchView -->
+    <style name="Widget.App.SearchView" parent="Widget.Material3.SearchView">
+        <item name="android:background">@drawable/search_view_background</item>
+        <item name="queryBackground">@android:color/transparent</item>
+        <item name="iconifiedByDefault">false</item>
+        <item name="queryHint">@string/search</item>
+    </style>
+    
+    <!-- Стиль для карточек рецептов -->
+    <style name="Widget.App.CardView" parent="Widget.Material3.CardView.Elevated">
+        <item name="cardCornerRadius">12dp</item>
+        <item name="cardElevation">2dp</item>
+        <item name="cardBackgroundColor">@color/md_theme_surfaceContainerLow</item>
+        <item name="rippleColor">@color/md_theme_onSurfaceVariant</item>
+    </style>
+    
+    <!-- Стиль для закругления верхних углов изображения -->
+    <style name="ShapeAppearance.App.CornerTop" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">12dp</item>
+        <item name="cornerSizeTopRight">12dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+    
+    <!-- Стиль для кнопок -->
+    <style name="Widget.App.Button" parent="Widget.Material3.Button">
+        <item name="backgroundTint">@color/md_theme_primary</item>
+        <item name="android:textColor">@color/md_theme_onPrimary</item>
+        <item name="cornerRadius">8dp</item>
+        <item name="elevation">2dp</item>
+    </style>
+    
+    <!-- Стиль для FloatingActionButton -->
+    <style name="Widget.App.FloatingActionButton" parent="Widget.Material3.FloatingActionButton.Primary">
+        <item name="backgroundTint">@color/md_theme_primary</item>
+        <item name="tint">@color/md_theme_onPrimary</item>
+        <item name="elevation">6dp</item>
+    </style>
+    
+    <!-- Стиль для Bottom Navigation -->
+    <style name="Widget.App.BottomNavigationView" parent="Widget.Material3.BottomNavigationView">
+        <item name="backgroundTint">@color/md_theme_surfaceContainer</item>
+        <item name="itemIconTint">@color/bottom_nav_item_color</item>
+        <item name="itemTextColor">@color/bottom_nav_item_color</item>
+        <item name="itemRippleColor">@color/md_theme_primary</item>
+        <item name="elevation">8dp</item>
+    </style>
+</resources> 
