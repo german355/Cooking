@@ -33,8 +33,8 @@ public class RecipeDeleter {
         this.context = context;
     }
 
-    public void deleteRecipe(final int recipeId, final String userId, final DeleteRecipeCallback callback) {
-        new DeleteRecipeTask(this, recipeId, userId, callback).execute();
+    public void deleteRecipe(final int recipeId, final String userId, final int permission, final DeleteRecipeCallback callback) {
+        new DeleteRecipeTask(this, recipeId, userId, permission,  callback).execute();
     }
 
     // Статический inner-класс AsyncTask с использованием WeakReference на RecipeDeleter
@@ -42,13 +42,15 @@ public class RecipeDeleter {
         private final WeakReference<RecipeDeleter> deleterRef;
         private final int recipeId;
         private final String userId;
+        private final int permission;
         private final DeleteRecipeCallback callback;
         private String errorMessage = "";
 
-        DeleteRecipeTask(RecipeDeleter deleter, int recipeId, String userId, DeleteRecipeCallback callback) {
+        DeleteRecipeTask(RecipeDeleter deleter, int recipeId, String userId, int permission, DeleteRecipeCallback callback) {
             this.deleterRef = new WeakReference<>(deleter);
             this.recipeId = recipeId;
             this.userId = userId;
+            this.permission = permission;
             this.callback = callback;
         }
 
@@ -63,6 +65,7 @@ public class RecipeDeleter {
                 JSONObject json = new JSONObject();
                 json.put("id", recipeId);
                 json.put("userId", userId);
+                json.put("permission", permission);
 
                 MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
                 RequestBody body = RequestBody.create(json.toString(), JSON_TYPE);

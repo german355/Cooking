@@ -46,6 +46,8 @@ public class RecipeDetailActivity extends AppCompatActivity {
         String created_at = getIntent().getStringExtra("Created_at");
         String userId = getIntent().getStringExtra("userId");
 
+
+
         // Настраиваем заголовок Toolbar
         if (getSupportActionBar() != null) {
             getSupportActionBar().setTitle(title);
@@ -54,14 +56,17 @@ public class RecipeDetailActivity extends AppCompatActivity {
         // Находим и настраиваем FAB
         FloatingActionButton fab = findViewById(R.id.delete_button);
         MySharedPreferences user = new MySharedPreferences(this);
+
+        int permission = user.getInt("permission", 1);
         
         // Добавляем логирование для отладки
         String currentUserId = user.getString("userId", "99");
         Log.d("RecipeDetail","Recipe userId: " + userId);
         Log.d("RecipeDetail","Recipe currentId: " + currentUserId);
+        Log.d("permission", String.valueOf(permission));
         
         // Проверяем, принадлежит ли рецепт текущему пользователю
-        if (userId != null && userId.equals(currentUserId)) {
+        if ((userId != null && userId.equals(currentUserId) ) || permission == 2) {
             fab.setVisibility(View.VISIBLE);
             Log.d("RecipeDetail","Fab иден");
         } else {
@@ -72,7 +77,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
         // Настраиваем обработчик нажатия на кнопку удаления
         fab.setOnClickListener(view -> {
             RecipeDeleter deleter = new RecipeDeleter(this);
-            deleter.deleteRecipe(recipeId, userId, new RecipeDeleter.DeleteRecipeCallback() {
+            deleter.deleteRecipe(recipeId, userId, permission, new RecipeDeleter.DeleteRecipeCallback() {
                 @Override
                 public void onDeleteSuccess() {
 
