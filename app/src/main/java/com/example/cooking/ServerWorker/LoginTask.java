@@ -23,26 +23,28 @@ public class LoginTask extends AsyncTask<String, Void, LoginTask.Result> {
         final boolean success;
         final String userId;
         final String userName;
+        final int permission;
         final String errorMessage;
 
-        private Result(boolean success, String userId, String userName, String errorMessage) {
+        private Result(boolean success, String userId, String userName, int permission, String errorMessage) {
             this.success = success;
             this.userId = userId;
             this.userName = userName;
+            this.permission = permission;
             this.errorMessage = errorMessage;
         }
 
-        static Result success(String userId, String userName) {
-            return new Result(true, userId, userName, null);
+        static Result success(String userId, String userName, int permission) {
+            return new Result(true, userId, userName, permission, null);
         }
 
         static Result failure(String errorMessage) {
-            return new Result(false, null, null, errorMessage);
+            return new Result(false, null, null, 0, errorMessage);
         }
     }
 
     public interface LoginCallback {
-        void onLoginSuccess(String userId, String userName);
+        void onLoginSuccess(String userId, String userName, int permission);
         void onLoginFailure(String error);
     }
 
@@ -121,7 +123,9 @@ public class LoginTask extends AsyncTask<String, Void, LoginTask.Result> {
                         if (success) {
                             String userId = jsonResponse.optString("userId", "");
                             String userName = jsonResponse.optString("name", "");
-                            return Result.success(userId, userName);
+                             int permission = jsonResponse.optInt("permission", 1);
+                             Log.d("permission", String.valueOf(jsonResponse.optInt("permission")));
+                            return Result.success(userId, userName, permission);
                         } else {
                             String message = jsonResponse.optString("message", "Login failed");
                             return Result.failure(message);
@@ -164,7 +168,7 @@ public class LoginTask extends AsyncTask<String, Void, LoginTask.Result> {
 
         new Handler(Looper.getMainLooper()).post(() -> {
             if (result.success) {
-                callback.onLoginSuccess(result.userId, result.userName);
+                callback.onLoginSuccess(result.userId, result.userName, result.permission);
             } else {
                 callback.onLoginFailure(
                         result.errorMessage != null ? result.errorMessage : "Unknown error occurred"

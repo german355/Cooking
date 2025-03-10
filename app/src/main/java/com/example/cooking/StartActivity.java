@@ -92,13 +92,14 @@ public class StartActivity extends AppCompatActivity implements LoginTask.LoginC
     }
 
     @Override
-    public void onLoginSuccess(String userId, String userName) {
+    public void onLoginSuccess(String userId, String userName, int permission) {
         runOnUiThread(() -> {
             try {
 
                 id.putString("userId", userId);
                 id.putString("userName", userName);
                 id.putBoolean("auth", true);
+                id.putInt("permission", permission );
 
                 // Переходим на главный экран
                 Intent intent = new Intent(StartActivity.this, MainActivity.class);
