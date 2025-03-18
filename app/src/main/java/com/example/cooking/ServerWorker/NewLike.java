@@ -13,9 +13,9 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-public class RecipeDeleter {
+public class NewLike {
 
-    private static final String TAG = "RecipeDeleter";
+    private static final String TAG = "NewLike";
     private static final String API_URL = "http://g3.veroid.network:19029";
     private final OkHttpClient client;
     private final Context context;
@@ -27,52 +27,51 @@ public class RecipeDeleter {
 
 
 
-    public RecipeDeleter(Context context) {
+    public NewLike(Context context) {
         client = new OkHttpClient.Builder()
                 .retryOnConnectionFailure(true)
                 .build();
         this.context = context;
     }
 
-    public void deleteRecipe(final int recipeId, final String userId, final int permission, final DeleteRecipeCallback callback) {
-        new DeleteRecipeTask(this, recipeId, userId, permission,  callback).execute();
+    public void likeRecipe(final int recipeId, final String userId, final DeleteRecipeCallback callback) {
+        new LikeRecipeTask(this, recipeId, userId, callback).execute();
     }
 
     // Статический inner-класс AsyncTask с использованием WeakReference на RecipeDeleter
-    private static class DeleteRecipeTask extends AsyncTask<Void, Void, Boolean> {
-        private final WeakReference<RecipeDeleter> deleterRef;
+    private static class LikeRecipeTask extends AsyncTask<Void, Void, Boolean> {
+        private final WeakReference<NewLike> deleterRef;
         private final int recipeId;
         private final String userId;
-        private final int permission;
         private final DeleteRecipeCallback callback;
         private String errorMessage = "";
 
-        DeleteRecipeTask(RecipeDeleter deleter, int recipeId, String userId, int permission, DeleteRecipeCallback callback) {
+        LikeRecipeTask(NewLike deleter, int recipeId, String userId, DeleteRecipeCallback callback) {
             this.deleterRef = new WeakReference<>(deleter);
             this.recipeId = recipeId;
             this.userId = userId;
-            this.permission = permission;
             this.callback = callback;
         }
 
         @Override
         protected Boolean doInBackground(Void... voids) {
-            RecipeDeleter deleter = deleterRef.get();
+            NewLike deleter = deleterRef.get();
             if (deleter == null) {
-                errorMessage = "RecipeDeleter is no longer available";
+                errorMessage = "RecipeLike is no longer available";
                 return false;
             }
             try {
                 JSONObject json = new JSONObject();
-                json.put("id", recipeId);
+                Log.d("LikeId", String.valueOf(recipeId));
+                json.put("recipeId", recipeId);
+                Log.d("LikeUserId", userId);
                 json.put("userId", userId);
-                json.put("permission", permission);
 
                 MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
                 RequestBody body = RequestBody.create(json.toString(), JSON_TYPE);
 
                 Request request = new Request.Builder()
-                        .url(API_URL + "/deliterecipe")
+                        .url(API_URL + "/like")
                         .post(body)
                         .build();
 
@@ -84,7 +83,7 @@ public class RecipeDeleter {
                     return false;
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Ошибка при удалении рецепта", e);
+                Log.e(TAG, "Ошибка при лайке", e);
                 errorMessage = e.getMessage();
                 return false;
             } catch (Exception e) {
@@ -98,10 +97,10 @@ public class RecipeDeleter {
         protected void onPostExecute(Boolean success) {
             if (success) {
                 callback.onDeleteSuccess();
-                RecipeDeleter deleter = deleterRef.get();
+                NewLike deleter = deleterRef.get();
                 RecipeRepository repository = new RecipeRepository(deleter.context);
                 repository.clearCache();
-                Log.d("Recipe", "Рецепт был удален");
+                Log.d("Recipe", "Рецепт был лайкнут");
             } else {
                 callback.onDeleteFailure(errorMessage);
             }

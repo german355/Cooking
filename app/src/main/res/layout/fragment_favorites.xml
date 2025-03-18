@@ -14,10 +14,10 @@
             style="@style/Widget.App.SearchView"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"/>
+            app:layout_constraintEnd_toEndOf="parent" />
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/swipe_refresh"
+            android:id="@+id/swipe_refresh_favorites"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_marginTop="8dp"
@@ -25,7 +25,7 @@
             app:layout_constraintBottom_toBottomOf="parent">
 
         <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recycler_view"
+                android:id="@+id/recycler_view_favorites"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:padding="8dp"
@@ -34,7 +34,7 @@
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <com.google.android.material.progressindicator.CircularProgressIndicator
-            android:id="@+id/progress_bar"
+            android:id="@+id/loading_view_favorites"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:visibility="gone"
@@ -47,16 +47,18 @@
             app:layout_constraintTop_toTopOf="parent" />
 
     <TextView
-            android:id="@+id/empty_view"
+            android:id="@+id/empty_view_favorites"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
             android:gravity="center"
+            android:text="У вас пока нет лайкнутых рецептов"
             android:textAppearance="@style/TextAppearance.App.BodyMedium"
             android:visibility="gone"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

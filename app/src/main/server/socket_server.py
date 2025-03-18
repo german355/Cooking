@@ -241,6 +241,68 @@ def get_recipes():
             'message': f'Ошибка сервера: {str(e)}',
             'recipes': []
         }), 500
+ #Добавления лайка   
+@app.route('/like', methods=['POST'])
+def like_recipe():
+    try:
+        data = request.get_json()
+        user_id = data.get('userId')
+        recipe_id = data.get('recipeId')
+        
+        if not user_id or not recipe_id:
+            return jsonify({'success': False, 'message': 'userId и recipeId обязательны'}), 400
+
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Проверяем, если лайк уже существует, можно вернуть соответствующее сообщение
+            check_sql = "SELECT * FROM user_likes WHERE user_id = %s AND recipe_id = %s"
+            cursor.execute(check_sql, (user_id, recipe_id))
+            if cursor.fetchone() is not None:
+                conn.close()
+                return jsonify({'success': False, 'message': 'Рецепт уже лайкнут'}), 409
+            
+            # Если лайка еще нет, вставляем новую запись
+            insert_sql = "INSERT INTO user_likes (user_id, recipe_id) VALUES (%s, %s)"
+            cursor.execute(insert_sql, (user_id, recipe_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': 'Лайк добавлен'})
+    except Exception as e:
+        print(f"Ошибка при лайке рецепта: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+    
+    
+    #Для получения понравившегося рецепта 
+@app.route('/likedrecipes', methods=['GET'])
+def get_liked_recipes():
+    user_id = request.args.get('userId')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'userId не указан'}), 400
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Выбираем рецепты, присоединив таблицу user_likes по recipe_id
+            sql = """
+                SELECT r.id, r.title, r.ingredients, r.instructions, r.created_at, r.photo, r.user_id as userId
+                FROM recipes r 
+                JOIN user_likes ul ON r.id = ul.recipe_id
+                WHERE ul.user_id = %s
+                ORDER BY r.created_at DESC
+            """
+            cursor.execute(sql, (user_id,))
+            recipes = cursor.fetchall()
+        conn.close()
+
+        # Форматируем поле created_at, если оно есть
+        for recipe in recipes:
+            if recipe.get('created_at'):
+                recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+        return jsonify({'success': True, 'recipes': recipes, 'count': len(recipes)})
+    except Exception as e:
+        print(f"Ошибка при получении лайкнутых рецептов: {str(e)}")
+        return jsonify({'success': False, 'message': f'Ошибка сервера: {str(e)}'}), 500
+
 
 
 # Запуск сервера

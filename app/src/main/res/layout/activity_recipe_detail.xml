@@ -53,8 +53,8 @@
                     android:id="@+id/recipe_ingredients"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
                     android:layout_marginTop="4dp"
+                    android:layout_marginBottom="16dp"
                     android:textSize="16sp"
                     tools:text="Ингредиенты рецепта" />
 
@@ -92,11 +92,22 @@
         android:id="@+id/delete_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
+        android:layout_gravity="bottom"
         android:layout_margin="16dp"
         android:contentDescription="Удалить рецепт"
-        android:visibility="gone"
         android:src="@android:drawable/ic_menu_delete"
+        android:visibility="gone"
+        app:backgroundTint="#F44336"
+        app:tint="@android:color/white" />
+
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/like_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="16dp"
+        android:contentDescription="лайкнуть рецепт"
+        android:src="@drawable/ic_favorite"
         app:backgroundTint="#F44336"
         app:tint="@android:color/white" />
     

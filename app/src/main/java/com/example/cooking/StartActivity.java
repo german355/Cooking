@@ -9,7 +9,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import com.example.cooking.ServerWorker.LoginTask;
-import com.example.cooking.ServerWorker.Regist;
 
 public class StartActivity extends AppCompatActivity implements LoginTask.LoginCallback {
     private EditText emailEditText;

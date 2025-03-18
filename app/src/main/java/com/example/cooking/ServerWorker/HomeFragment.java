@@ -1,4 +1,4 @@
-package com.example.cooking;
+package com.example.cooking.ServerWorker;
 
 import android.os.Bundle;
 import android.util.Log;
@@ -18,11 +18,11 @@ import java.util.List;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.content.Intent;
 import android.widget.Toast;
+
+import com.example.cooking.R;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
-import com.example.cooking.ServerWorker.AddRecipeActivity;
-import com.example.cooking.ServerWorker.RecipeRepository;
-import com.example.cooking.ServerWorker.RecipeSearchService;
+
 import android.widget.SearchView;
 
 /**
@@ -198,76 +198,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     @Override
     public void onResume() {
         super.onResume();
-        
-        try {
-            // Сначала пробуем загрузить данные без сети
-            boolean useCache = true;
-            loadRecipes(useCache);
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка при загрузке кэша: " + e.getMessage());
-            showEmptyView(true);
-        }
-    }
-
-    private void loadRecipes(boolean useCache) {
-        Log.d(TAG, "Начинаем загрузку рецептов, использовать кэш: " + useCache);
-        showLoading(true);
-        
-        if (useCache) {
-            // Пробуем загрузить только из кэша
-            repository.getRecipesFromCache(new RecipeRepository.RecipesCallback() {
-                @Override
-                public void onRecipesLoaded(List<Recipe> recipes) {
-                    Log.d(TAG, "Рецепты загружены из кэша, количество: " + recipes.size());
-                    showLoading(false);
-                    
-                    if (recipes.isEmpty()) {
-                        // Если кэш пуст, пробуем загрузить с сервера
-                        loadRecipes(false);
-                    } else {
-                        // Обновляем список рецептов из кэша
-                        adapter.updateRecipes(recipes);
-                        showEmptyView(false);
-                        
-                        // Фоново обновляем данные с сервера
-                        repository.refreshRecipesInBackground(new RecipeRepository.RecipesCallback() {
-                            @Override
-                            public void onRecipesLoaded(List<Recipe> updatedRecipes) {
-                                if (!updatedRecipes.isEmpty()) {
-                                    adapter.updateRecipes(updatedRecipes);
-                                }
-                            }
-                            
-                            @Override
-                            public void onDataNotAvailable(String error) {
-                                // Игнорируем ошибки, т.к. уже показываем данные из кэша
-                                Log.w(TAG, "Ошибка фонового обновления: " + error);
-                            }
-                        });
-                    }
-                }
-                
-                @Override
-                public void onDataNotAvailable(String error) {
-                    // Если кэш недоступен, пробуем загрузить с сервера
-                    Log.e(TAG, "Не удалось получить рецепты из кэша: " + error);
-                    
-                    if (isAdded()) {
-                        requireActivity().runOnUiThread(() -> {
-                            Toast.makeText(getContext(), "Загрузка рецептов с сервера...", Toast.LENGTH_SHORT).show();
-                            // Пробуем загрузить данные с сервера
-                            loadRecipes(false);
-                        });
-                    } else {
-                        // Если фрагмент не прикреплен, просто пытаемся загрузить с сервера
-                        loadRecipes(false);
-                    }
-                }
-            });
-        } else {
-            // Пробуем загрузить только с сервера
-            repository.getRecipesFromServer(this);
-        }
+        loadRecipes();
     }
 
     /**
@@ -350,10 +281,6 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         Log.d(TAG, "Принудительное обновление с сервера");
         showLoading(true);
         
-        // Сначала очищаем кэш
-        repository.clearCache();
-        
-        // Затем загружаем данные только с сервера
-        repository.getRecipesFromServer(this);
+        repository.getRecipes(this);
     }
-} 
+}

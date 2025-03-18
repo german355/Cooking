@@ -1,4 +1,4 @@
-package com.example.cooking.ServerWorker;
+   package com.example.cooking;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -7,8 +7,8 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
-import com.example.cooking.R;
-import com.example.cooking.StartActivity;
+
+import com.example.cooking.ServerWorker.RegistrationTask;
 import com.google.android.material.textfield.TextInputEditText;
 
 public class Regist extends AppCompatActivity implements RegistrationTask.RegistrationCallback {
