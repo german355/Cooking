@@ -4,10 +4,14 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
+import com.example.cooking.ServerWorker.NewLike;
 import com.example.cooking.ServerWorker.RecipeDeleter;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
@@ -39,7 +43,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         // Получаем данные о рецепте из Intent
-        int recipeId = getIntent().getIntExtra("recipe_id", -1);
+        int  recipeId = getIntent().getIntExtra("recipe_id", -1);
         String title = getIntent().getStringExtra("recipe_title");
         String ingredients = getIntent().getStringExtra("recipe_ingredients");
         String instructions = getIntent().getStringExtra("recipe_instructions");
@@ -54,7 +58,8 @@ public class RecipeDetailActivity extends AppCompatActivity {
         }
 
         // Находим и настраиваем FAB
-        FloatingActionButton fab = findViewById(R.id.delete_button);
+        FloatingActionButton fabDelite = findViewById(R.id.delete_button);
+        FloatingActionButton fabLike = findViewById(R.id.like_button);
         MySharedPreferences user = new MySharedPreferences(this);
 
         int permission = user.getInt("permission", 1);
@@ -67,15 +72,15 @@ public class RecipeDetailActivity extends AppCompatActivity {
         
         // Проверяем, принадлежит ли рецепт текущему пользователю
         if ((userId != null && userId.equals(currentUserId) ) || permission == 2) {
-            fab.setVisibility(View.VISIBLE);
+            fabDelite.setVisibility(View.VISIBLE);
             Log.d("RecipeDetail","Fab иден");
         } else {
-            fab.setVisibility(View.GONE);
+            fabDelite.setVisibility(View.GONE);
             Log.d("RecipeDetail","Fab спрятан");
         }
         
         // Настраиваем обработчик нажатия на кнопку удаления
-        fab.setOnClickListener(view -> {
+        fabDelite.setOnClickListener(view -> {
             RecipeDeleter deleter = new RecipeDeleter(this);
             deleter.deleteRecipe(recipeId, userId, permission, new RecipeDeleter.DeleteRecipeCallback() {
                 @Override
@@ -89,6 +94,22 @@ public class RecipeDetailActivity extends AppCompatActivity {
                 public void onDeleteFailure(String error) {
                     // Обработка ошибки удаления рецепта
                     Log.e("DeleteRecipe", "Ошибка удаления рецепта:  " + error);
+                }
+            });
+        });
+
+        fabLike.setOnClickListener(view -> {
+            NewLike like = new NewLike(this);
+            Toast.makeText(this, "Like button clicked", Toast.LENGTH_SHORT).show();
+            like.likeRecipe(recipeId, currentUserId, new NewLike.DeleteRecipeCallback() {
+                @Override
+                public void onDeleteSuccess() {
+                    Log.d("LikeRecipe", "it's liked");
+                }
+
+                @Override
+                public void onDeleteFailure(String error) {
+                    Log.d("Liked Recipe", "error");
                 }
             });
         });

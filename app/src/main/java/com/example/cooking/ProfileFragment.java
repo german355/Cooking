@@ -44,9 +44,10 @@ public class ProfileFragment extends Fragment {
      */
     private void logoutUser() {
         // Очищаем данные пользователя
-        user.putBoolean("auth", false);
+        /*user.putBoolean("auth", false);
         user.putString("userId", null);
-        user.putString("userName", null);
+        user.putString("userName", null);*/
+        user.clear();
         
         // Создаем Intent для перехода на экран входа
         Intent intent = new Intent(requireActivity(), StartActivity.class);

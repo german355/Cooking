@@ -40,7 +40,7 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
         <activity
-            android:name=".ServerWorker.Regist"
+            android:name=".Regist"
             android:exported="false" />
         <activity
             android:name=".ServerWorker.AddRecipeActivity"

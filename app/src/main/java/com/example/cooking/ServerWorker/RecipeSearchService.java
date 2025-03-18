@@ -1,6 +1,5 @@
 package com.example.cooking.ServerWorker;
 
-import android.annotation.SuppressLint;
 import android.os.AsyncTask;
 import android.util.Log;
 import com.example.cooking.Recipe.Recipe;
@@ -66,7 +65,7 @@ public class RecipeSearchService {
             Log.d(TAG, "Поиск рецептов по названию: " + query);
             
             // Синхронно получаем рецепты из кэша
-            Result<List<Recipe>> result = repository.getRecipesFromCacheSync();
+            Result<List<Recipe>> result = repository.loadFromCache();
             
             if (!result.isSuccess()) {
                 RecipeRepository.Result.Error<List<Recipe>> error = 
@@ -112,6 +111,7 @@ public class RecipeSearchService {
         }
     }
 
+
     /**
      * Статический класс для расширенного поиска без утечек памяти
      */
@@ -132,7 +132,7 @@ public class RecipeSearchService {
             Log.d(TAG, "Поиск рецептов по названию и ингредиентам: " + query);
             
             // Синхронно получаем рецепты из кэша
-            Result<List<Recipe>> result = repository.getRecipesFromCacheSync();
+            Result<List<Recipe>> result = repository.loadFromCache();
             
             if (!result.isSuccess()) {
                 RecipeRepository.Result.Error<List<Recipe>> error = 
