@@ -224,7 +224,7 @@ public class FavoritesFragment extends Fragment {
     }
     
     private void showError(String message) {
-        Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+        Toast.makeText(getContext(),"Ошибка сети", Toast.LENGTH_SHORT).show();
         emptyView.setText("Нет лайкнутых рецептов\n" + message);
         showEmptyView();
     }

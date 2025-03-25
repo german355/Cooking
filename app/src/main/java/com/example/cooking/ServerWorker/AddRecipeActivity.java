@@ -1,17 +1,32 @@
 package com.example.cooking.ServerWorker;
 
+import android.Manifest;
+import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
@@ -19,7 +34,9 @@ import com.example.cooking.R;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.ref.WeakReference;
 
 import okhttp3.MediaType;
@@ -29,9 +46,13 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.MultipartBody;
 
+import com.google.gson.annotations.SerializedName;
+
 
 public class AddRecipeActivity extends AppCompatActivity {
     private static final String TAG = "AddRecipeActivity";
+    private static final int REQUEST_STORAGE_PERMISSION = 1001;
+    private static final int REQUEST_PICK_IMAGE = 1002;
     
     private EditText titleEditText;
     private MySharedPreferences user;
@@ -39,6 +60,12 @@ public class AddRecipeActivity extends AppCompatActivity {
     private EditText instructionsEditText;
     private Button saveButton;
     private ProgressBar progressBar;
+    
+    // Добавляем новые переменные для работы с изображениями
+    private ImageView recipeImageView;
+    private Button selectImageButton;
+    private Uri selectedImageUri;
+    private byte[] imageBytes;
     
     private static final String API_URL = "http://g3.veroid.network:19029";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
@@ -66,6 +93,11 @@ public class AddRecipeActivity extends AppCompatActivity {
         instructionsEditText = findViewById(R.id.recipe_instructions);
         saveButton = findViewById(R.id.save_button);
         progressBar = findViewById(R.id.progress_bar);
+        
+        // Инициализируем новые компоненты для работы с изображениями
+        recipeImageView = findViewById(R.id.recipe_image);
+        selectImageButton = findViewById(R.id.btn_select_image);
+        
         Log.d(TAG, "onCreate: Все UI элементы инициализированы");
 
         // Инициализируем SharedPreferences
@@ -82,17 +114,146 @@ public class AddRecipeActivity extends AppCompatActivity {
             }
         });
         Log.d(TAG, "onCreate: Обработчик кнопки 'Сохранить' настроен");
+        
+        // Добавляем обработчик для кнопки выбора изображения
+        selectImageButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Log.d(TAG, "onClick: Нажата кнопка выбора изображения");
+                checkStoragePermissionAndPickImage();
+            }
+        });
+        Log.d(TAG, "onCreate: Обработчик кнопки выбора изображения настроен");
+    }
+    
+    // Проверка разрешения на доступ к хранилищу и выбор изображения
+    private void checkStoragePermissionAndPickImage() {
+        // Определяем, какое разрешение запрашивать в зависимости от версии Android
+        String permission;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // Android 13+ (API 33+)
+            permission = Manifest.permission.READ_MEDIA_IMAGES;
+        } else {
+            permission = Manifest.permission.READ_EXTERNAL_STORAGE;
+        }
+        
+        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+            // Запрашиваем разрешение
+            ActivityCompat.requestPermissions(this, new String[]{permission}, REQUEST_STORAGE_PERMISSION);
+            Log.d(TAG, "checkStoragePermissionAndPickImage: Запрошено разрешение: " + permission);
+            // Показываем пользователю, почему нужно разрешение
+            Toast.makeText(this, "Для выбора фото необходимо предоставить разрешение на доступ к галерее", 
+                    Toast.LENGTH_LONG).show();
+        } else {
+            // Если разрешение уже есть, открываем галерею
+            openGallery();
+        }
+    }
+    
+    // Открытие галереи для выбора изображения
+    private void openGallery() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+            startActivityForResult(intent, REQUEST_PICK_IMAGE);
+            Log.d(TAG, "openGallery: Открыта галерея для выбора изображения");
+        } catch (Exception e) {
+            Log.e(TAG, "openGallery: Ошибка при открытии галереи", e);
+            Toast.makeText(this, "Не удалось открыть галерею: " + e.getMessage(), 
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    // Обработка результата запроса разрешения
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_STORAGE_PERMISSION) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Если разрешение получено, открываем галерею
+                Log.d(TAG, "onRequestPermissionsResult: Разрешение получено, открываем галерею");
+                Toast.makeText(this, "Разрешение получено, теперь вы можете выбрать фото", 
+                        Toast.LENGTH_SHORT).show();
+                openGallery();
+            } else {
+                Toast.makeText(this, "Для выбора изображения необходим доступ к хранилищу", 
+                        Toast.LENGTH_SHORT).show();
+                Log.w(TAG, "onRequestPermissionsResult: Разрешение не получено");
+            }
+        }
+    }
+    
+    // Обработка результата выбора изображения
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_PICK_IMAGE && resultCode == RESULT_OK && data != null) {
+            try {
+                selectedImageUri = data.getData();
+                // Отображаем выбранное изображение
+                recipeImageView.setImageURI(selectedImageUri);
+                
+                // Преобразуем изображение в массив байтов для отправки
+                InputStream inputStream = getContentResolver().openInputStream(selectedImageUri);
+                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+                
+                // Сжимаем изображение до разумного размера
+                Bitmap resizedBitmap = resizeBitmap(bitmap, 800);
+                
+                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, byteArrayOutputStream);
+                imageBytes = byteArrayOutputStream.toByteArray();
+                
+                if (inputStream != null) {
+                    inputStream.close();
+                }
+                
+                Log.d(TAG, "onActivityResult: Изображение выбрано, размер: " + imageBytes.length + " байт");
+                Toast.makeText(this, "Изображение выбрано", Toast.LENGTH_SHORT).show();
+            } catch (Exception e) {
+                Log.e(TAG, "onActivityResult: Ошибка при обработке изображения", e);
+                Toast.makeText(this, "Ошибка при загрузке изображения: " + e.getMessage(), 
+                        Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+    
+    // Метод для изменения размера Bitmap
+    private Bitmap resizeBitmap(Bitmap bitmap, int maxSide) {
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        
+        if (width <= maxSide && height <= maxSide) {
+            return bitmap; // Нет необходимости менять размер
+        }
+        
+        float ratio = (float) width / height;
+        int newWidth, newHeight;
+        
+        if (width > height) {
+            newWidth = maxSide;
+            newHeight = (int) (maxSide / ratio);
+        } else {
+            newHeight = maxSide;
+            newWidth = (int) (maxSide * ratio);
+        }
+        
+        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
     }
 
     private void saveRecipe() {
         Log.d(TAG, "saveRecipe: Начало процесса сохранения рецепта");
+
+        // Проверяем подключение к интернету
+        if (!isNetworkAvailable()) {
+            Toast.makeText(this, "Отсутствует подключение к интернету", Toast.LENGTH_LONG).show();
+            Log.w(TAG, "saveRecipe: Нет подключения к интернету");
+            return;
+        }
 
         // Получаем введенные пользователем данные
         String title = titleEditText.getText().toString().trim();
         String ingredients = ingredientsEditText.getText().toString().trim();
         String instructions = instructionsEditText.getText().toString().trim();
         String id = user.getString("userId", "99");
-
 
         Log.d(TAG, "saveRecipe: Получены данные - title: " + title +
                 ", ingredients length: " + ingredients.length() +
@@ -115,7 +276,7 @@ public class AddRecipeActivity extends AppCompatActivity {
 
         // Создаем и выполняем асинхронную задачу для отправки рецепта на сервер
         Log.d(TAG, "saveRecipe: Запуск асинхронной задачи SaveRecipeTask");
-        new SaveRecipeTask(this, title, ingredients, instructions, id ).execute();
+        new SaveRecipeTask(this, title, ingredients, instructions, id, imageBytes).execute();
     }
 
     @Override
@@ -128,28 +289,35 @@ public class AddRecipeActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
+    // Метод для проверки наличия интернет-соединения
+    private boolean isNetworkAvailable() {
+        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+    }
+
     // Асинхронная задача для отправки рецепта на сервер
     private static class SaveRecipeTask extends AsyncTask<Void, Void, Boolean> {
         private final WeakReference<AddRecipeActivity> activityRef;
         private final String title;
         private final String ingredients;
         private final String instructions;
-        //private final String creat_at;
         private final String userId;
+        private final byte[] imageBytes;
         private String errorMessage;
 
-        SaveRecipeTask(AddRecipeActivity activity, String title, String ingredients, String instructions, /*String creatAt,*/ String userId) {
+        SaveRecipeTask(AddRecipeActivity activity, String title, String ingredients, String instructions, String userId, byte[] imageBytes) {
             this.activityRef = new WeakReference<>(activity);
             this.title = title;
             this.ingredients = ingredients;
             this.instructions = instructions;
-            //this.creat_at = creatAt;
             this.userId = userId;
+            this.imageBytes = imageBytes;
 
             Log.d(TAG, "SaveRecipeTask: Создан экземпляр задачи с параметрами - title: " + title +
                     ", ingredients length: " + ingredients.length() +
-                    ", instructions length: " + instructions.length()  );
-                    //", userId: " + creatAt);
+                    ", instructions length: " + instructions.length() +
+                    ", imageBytes: " + (imageBytes != null ? imageBytes.length + " байт" : "нет"));
         }
 
         @Override
@@ -168,6 +336,16 @@ public class AddRecipeActivity extends AppCompatActivity {
                         .addFormDataPart("ingredients", ingredients)
                         .addFormDataPart("instructions", instructions)
                         .addFormDataPart("userId", userId);
+                
+                // Добавляем изображение к запросу, если оно было выбрано
+                if (imageBytes != null && imageBytes.length > 0) {
+                    String fileName = "recipe_" + System.currentTimeMillis() + ".jpg";
+                    multipartBuilder.addFormDataPart("photo", fileName,
+                            RequestBody.create(MediaType.parse("image/jpeg"), imageBytes));
+                    Log.d(TAG, "doInBackground: Добавлено изображение к запросу, имя файла: " + fileName + ", размер: " + imageBytes.length + " байт");
+                } else {
+                    Log.d(TAG, "doInBackground: Изображение не выбрано или имеет нулевой размер");
+                }
 
                 // Создаем HTTP-клиент и запрос
                 RequestBody body = multipartBuilder.build();
@@ -192,7 +370,14 @@ public class AddRecipeActivity extends AppCompatActivity {
                 if (response.isSuccessful()) {
                     JSONObject jsonResponse = new JSONObject(responseData);
                     boolean success = jsonResponse.optBoolean("success", false);
-                    Log.d(TAG, "doInBackground: Успешный ответ, success = " + success);
+                    String message = jsonResponse.optString("message", "");
+                    Log.d(TAG, "doInBackground: Успешный ответ, success = " + success + ", message = " + message);
+                    
+                    // Сохраняем сообщение для отображения пользователю
+                    if (message.length() > 0) {
+                        errorMessage = message; // Используем errorMessage для передачи сообщения, даже если это успех
+                    }
+                    
                     return success;
                 } else {
                     errorMessage = "Ошибка сервера: " + response.code();
@@ -227,13 +412,20 @@ public class AddRecipeActivity extends AppCompatActivity {
                 // Очищаем кэш рецептов (если требуется)
                 RecipeRepository repository = new RecipeRepository(activity);
                 repository.clearCache();
-                Toast.makeText(activity, "Рецепт успешно сохранен", Toast.LENGTH_SHORT).show();
+                
+                // Показываем сообщение об успехе, используя message от сервера, если есть
+                String message = errorMessage != null && !errorMessage.isEmpty() 
+                        ? errorMessage 
+                        : "Рецепт успешно сохранен";
+                Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
+                
                 Log.d(TAG, "SaveRecipeTask.onPostExecute: Рецепт сохранен, закрытие Activity");
                 activity.finish();
             } else {
+                // Показываем сообщение об ошибке
                 String message = errorMessage != null ? errorMessage : "Не удалось сохранить рецепт";
                 Log.e(TAG, "SaveRecipeTask.onPostExecute: Ошибка: " + message);
-                Toast.makeText(activity, message, Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
             }
         }
     }

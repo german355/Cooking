@@ -30,16 +30,29 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:padding="16dp">
+                <TextView
+                android:id="@+id/recipe_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                tools:text="Название рецепта" />
+
+                <!-- Изображение рецепта -->
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/recipe_image"
+                    android:layout_width="match_parent"
+                    android:layout_height="200dp"
+                    android:layout_marginBottom="16dp"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Изображение рецепта"
+                    android:adjustViewBounds="true"
+                    app:shapeAppearanceOverlay="@style/RoundedImageView"
+                    tools:src="@drawable/white_card_background" />
 
                 <!-- Existing content remains the same -->
-                <TextView
-                    android:id="@+id/recipe_title"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="16dp"
-                    android:textSize="24sp"
-                    android:textStyle="bold"
-                    tools:text="Название рецепта" />
+
 
                 <TextView
                     android:layout_width="match_parent"

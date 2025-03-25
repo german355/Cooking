@@ -3,6 +3,7 @@ package com.example.cooking.ServerWorker;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
+import android.widget.Toast;
 
 import com.example.cooking.Recipe.Recipe;
 import com.google.gson.Gson;
@@ -125,6 +126,7 @@ public class LikedRecipesRepository {
             editor.apply();
         } catch (JSONException e) {
             Log.e(TAG, "Ошибка при кэшировании рецептов", e);
+
         }
     }
     

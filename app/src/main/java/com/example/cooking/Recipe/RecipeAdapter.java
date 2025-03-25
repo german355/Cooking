@@ -5,12 +5,16 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.bumptech.glide.Glide;
 import com.example.cooking.R;
+import com.google.android.material.imageview.ShapeableImageView;
 
 import java.util.List;
 
@@ -44,6 +48,16 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
     public void onBindViewHolder(@NonNull RecipeViewHolder holder, int position) {
         Recipe recipe = recipes.get(position);
         holder.titleTextView.setText(recipe.getTitle());
+        if (recipe.getPhoto_url() != null){
+            Glide.with(holder.imageView.getContext())
+                    .load(recipe.getPhoto_url())
+                    .placeholder(R.drawable.white_card_background)
+                    .error(R.drawable.white_card_background)
+                    .centerCrop()
+                    .into(holder.imageView);
+        }else{
+            holder.imageView.setImageResource(R.drawable.white_card_background);
+        }
         
         // Устанавливаем обработчик нажатий на карточку
         holder.cardView.setOnClickListener(v -> {
@@ -54,7 +68,11 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
             intent.putExtra("recipe_instructions", recipe.getInstructions());
             intent.putExtra("Created_at", recipe.getCreated_at());
             intent.putExtra("userId", recipe.getUserId());
+            intent.putExtra("photo_url", recipe.getPhoto_url());
             Log.d("Id", recipe.getUserId());
+            if (recipe.getPhoto_url() != null) {
+                Log.d("RecipeAdapter", "Photo URL: " + recipe.getPhoto_url());
+            }
             v.getContext().startActivity(intent);
         });
     }
@@ -75,7 +93,7 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
      */
     static class RecipeViewHolder extends RecyclerView.ViewHolder {
         TextView titleTextView;
-        ImageView imageView;
+        ShapeableImageView imageView;
         CardView cardView;
 
         RecipeViewHolder(View itemView) {

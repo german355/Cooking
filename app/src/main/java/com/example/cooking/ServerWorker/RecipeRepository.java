@@ -74,8 +74,16 @@ public class RecipeRepository {
         Interceptor cacheInterceptor = chain -> {
             Request request = chain.request();
             
-            //  используем только кэш если нет сети,
-            if (!isNetworkAvailable()) {
+            // Всегда сначала пробуем загрузить свежие данные с сервера
+            if (isNetworkAvailable()) {
+                // Запрос к серверу с указанием не использовать кэш
+                request = request.newBuilder()
+                        .cacheControl(CacheControl.FORCE_NETWORK)
+                        .build();
+                
+                Log.d(TAG, "Загрузка данных с сервера");
+            } else {
+                // Если сети нет, пробуем использовать кэш
                 CacheControl cacheControl = new CacheControl.Builder()
                         .maxStale(MAX_STALE, TimeUnit.SECONDS)
                         .build();
@@ -89,19 +97,11 @@ public class RecipeRepository {
             
             Response response = chain.proceed(request);
             
-            // Если сеть доступна, кэшируем ответ
-            if (isNetworkAvailable()) {
-                CacheControl cacheControl = new CacheControl.Builder()
-                        .maxAge(MAX_AGE, TimeUnit.SECONDS)
-                        .build();
-                
-                return response.newBuilder()
-                        .removeHeader("Pragma")
-                        .header(CACHE_CONTROL_HEADER, cacheControl.toString())
-                        .build();
-            }
-            
-            return response;
+            // Кэшируем ответ для будущего использования в оффлайн режиме
+            return response.newBuilder()
+                    .removeHeader("Pragma")
+                    .header(CACHE_CONTROL_HEADER, "public, max-age=" + MAX_AGE)
+                    .build();
         };
         
         //  интерцептор для перехвата всех запросов
@@ -148,6 +148,22 @@ public class RecipeRepository {
      * Получает рецепты с сервера.
      */
     public void getRecipes(final RecipesCallback callback) {
+        // Если нет сети, сразу пробуем загрузить из кэша
+        if (!isNetworkAvailable()) {
+            Log.d(TAG, "Нет подключения к интернету, пробуем загрузить из кэша");
+            Result<List<Recipe>> cachedResult = loadFromCache();
+            if (cachedResult.isSuccess()) {
+                List<Recipe> recipes = ((Result.Success<List<Recipe>>) cachedResult).getData();
+                Log.d(TAG, "Загружено из кэша рецептов: " + recipes.size());
+                callback.onRecipesLoaded(recipes);
+                return;
+            } else {
+                Log.e(TAG, "Кэш недоступен: " + ((Result.Error<List<Recipe>>) cachedResult).getErrorMessage());
+                callback.onDataNotAvailable("Нет подключения к интернету и нет данных в кэше");
+                return;
+            }
+        }
+
         // Вызываем API асинхронно, используя enqueue
         Call<RecipesResponse> call = recipeApi.getRecipes();
         call.enqueue(new Callback<RecipesResponse>() {
@@ -157,8 +173,8 @@ public class RecipeRepository {
                     RecipesResponse recipesResponse = response.body();
                     if (recipesResponse != null && recipesResponse.isSuccess() && recipesResponse.getRecipes() != null) {
                         List<Recipe> recipes = recipesResponse.getRecipes();
-                        Log.d(TAG, "Загружено рецептов: " + recipes.size());
-                        // Сохраняем в кэш для RecipeSearchService
+                        Log.d(TAG, "Загружено с сервера рецептов: " + recipes.size());
+                        // Сохраняем в кэш для RecipeSearchService и для оффлайн режима
                         saveToCache(recipes);
                         callback.onRecipesLoaded(recipes);
                     } else {
@@ -166,7 +182,8 @@ public class RecipeRepository {
                                 ? "Ошибка в ответе сервера: " + recipesResponse.getMessage()
                                 : "Пустой ответ от сервера";
                         Log.e(TAG, errorMsg);
-                        callback.onDataNotAvailable(errorMsg);
+                        // Пробуем загрузить из кэша при ошибке сервера
+                        tryLoadFromCache(errorMsg, callback);
                     }
                 } else {
                     String errorBody = null;
@@ -182,7 +199,8 @@ public class RecipeRepository {
                     }
                     
                     Log.e(TAG, errorMsg);
-                    callback.onDataNotAvailable(errorMsg);
+                    // Пробуем загрузить из кэша при ошибке HTTP
+                    tryLoadFromCache(errorMsg, callback);
                 }
             }
             
@@ -197,15 +215,26 @@ public class RecipeRepository {
                     errorMsg = "Ошибка сети: " + t.getMessage();
                 }
                 
-                callback.onDataNotAvailable(errorMsg);
-                
-                // Попытка загрузить из кэша при ошибке сети
-                Result<List<Recipe>> cachedResult = loadFromCache();
-                if (cachedResult.isSuccess()) {
-                    callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
-                }
+                Log.e(TAG, errorMsg);
+                // Пробуем загрузить из кэша при ошибке сети
+                tryLoadFromCache(errorMsg, callback);
             }
         });
+    }
+    
+    /**
+     * Вспомогательный метод для загрузки данных из кэша при ошибках сети или сервера
+     */
+    private void tryLoadFromCache(String errorMsg, RecipesCallback callback) {
+        Result<List<Recipe>> cachedResult = loadFromCache();
+        if (cachedResult.isSuccess()) {
+            List<Recipe> recipes = ((Result.Success<List<Recipe>>) cachedResult).getData();
+            Log.d(TAG, "Загружены данные из кэша после ошибки сети: " + recipes.size() + " рецептов");
+            callback.onRecipesLoaded(recipes);
+        } else {
+            // Если и кэш недоступен, возвращаем ошибку
+            callback.onDataNotAvailable(errorMsg + ". Кэш также недоступен.");
+        }
     }
     
     /**
@@ -298,6 +327,7 @@ public class RecipeRepository {
                     recipe.setIngredients(recipeJson.optString("ingredients", ""));
                     recipe.setInstructions(recipeJson.optString("instructions", ""));
                     recipe.setPhoto_url(recipeJson.optString("photo", ""));
+                    Log.i("photo", recipeJson.optString("photo", ""));
                     recipe.setCreated_at(recipeJson.optString("created_at", ""));
                     recipe.setUserId(recipeJson.optString("userId", ""));
                     recipes.add(recipe);

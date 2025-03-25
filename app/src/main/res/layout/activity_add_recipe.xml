@@ -26,6 +26,22 @@
             android:orientation="vertical"
             android:padding="16dp">
 
+            <ImageView
+                android:id="@+id/recipe_image"
+                android:layout_width="match_parent"
+                android:layout_height="200dp"
+                android:scaleType="centerCrop"
+                android:contentDescription="Фото рецепта"
+                android:background="#EEEEEE" />
+                
+            <Button
+                android:id="@+id/btn_select_image"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Выбрать фото рецепта"
+                android:layout_marginTop="8dp"
+                android:layout_marginBottom="16dp" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -39,7 +55,9 @@
                 android:layout_marginBottom="16dp"
                 android:hint="Например: Борщ украинский"
                 android:inputType="text"
-                android:maxLines="1" />
+                android:maxLines="1"
+                android:background="@drawable/edit_text_gradient_background"
+                android:elevation="1dp" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -55,7 +73,9 @@
                 android:gravity="top"
                 android:hint="Перечислите все необходимые ингредиенты"
                 android:inputType="textMultiLine"
-                android:minLines="3" />
+                android:minLines="3"
+                android:background="@drawable/edit_text_gradient_background"
+                android:elevation="1dp" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -71,7 +91,9 @@
                 android:gravity="top"
                 android:hint="Опишите подробно процесс приготовления"
                 android:inputType="textMultiLine"
-                android:minLines="5" />
+                android:minLines="5"
+                android:background="@drawable/edit_text_gradient_background"
+                android:elevation="1dp" />
 
         </LinearLayout>
     </ScrollView>

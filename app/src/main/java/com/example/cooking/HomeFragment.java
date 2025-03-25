@@ -1,4 +1,4 @@
-package com.example.cooking.ServerWorker;
+package com.example.cooking;
 
 import android.os.Bundle;
 import android.util.Log;
@@ -19,9 +19,11 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.content.Intent;
 import android.widget.Toast;
 
-import com.example.cooking.R;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
+import com.example.cooking.ServerWorker.AddRecipeActivity;
+import com.example.cooking.ServerWorker.RecipeRepository;
+import com.example.cooking.ServerWorker.RecipeSearchService;
 
 import android.widget.SearchView;
 

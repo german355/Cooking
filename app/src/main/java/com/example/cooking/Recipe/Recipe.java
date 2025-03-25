@@ -1,5 +1,7 @@
 package com.example.cooking.Recipe;
 
+import com.google.gson.annotations.SerializedName;
+
 /**
  * Класс, представляющий рецепт.
  * Содержит всю информацию о рецепте, необходимую для отображения
@@ -12,6 +14,8 @@ public class Recipe {
     private String instructions;
     private String created_at;
     private String userId;
+    
+    @SerializedName("photo")
     private String photo_url;
 
     public String getPhoto_url() {

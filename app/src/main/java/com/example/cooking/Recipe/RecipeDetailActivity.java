@@ -9,11 +9,15 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
+import com.bumptech.glide.request.RequestOptions;
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
 import com.example.cooking.ServerWorker.NewLike;
 import com.example.cooking.ServerWorker.RecipeDeleter;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.imageview.ShapeableImageView;
 
 /**
  * Активность для отображения подробной информации о рецепте.
@@ -25,6 +29,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
     public static final String EXTRA_RECIPE_CREATOR = "recipe_creator";
     public static final String EXTRA_RECIPE_INSTRUCTOR = "recipe_instructor";
     public static final String EXTRA_RECIPE_FOOD = "recipe_food";
+    public static final String EXTRA_RECIPE_PHOTO_URL = "photo_url";
     private static final String TAG = "RecipeDatail";
 
     /**
@@ -49,8 +54,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
         String instructions = getIntent().getStringExtra("recipe_instructions");
         String created_at = getIntent().getStringExtra("Created_at");
         String userId = getIntent().getStringExtra("userId");
-
-
+        String photoUrl = getIntent().getStringExtra("photo_url");
 
         // Настраиваем заголовок Toolbar
         if (getSupportActionBar() != null) {
@@ -85,7 +89,6 @@ public class RecipeDetailActivity extends AppCompatActivity {
             deleter.deleteRecipe(recipeId, userId, permission, new RecipeDeleter.DeleteRecipeCallback() {
                 @Override
                 public void onDeleteSuccess() {
-
                     Log.d("DeleteRecipe", "Рецепт удалён");
                     finish();
                 }
@@ -118,14 +121,29 @@ public class RecipeDetailActivity extends AppCompatActivity {
         TextView titleTextView = findViewById(R.id.recipe_title);
         TextView ingredientsTextView = findViewById(R.id.recipe_ingredients);
         TextView instructionsTextView = findViewById(R.id.recipe_instructions);
+        ShapeableImageView recipeImageView = findViewById(R.id.recipe_image);
 
         // Устанавливаем текст
         titleTextView.setText(title);
         ingredientsTextView.setText(ingredients);
         instructionsTextView.setText(instructions);
+        
+        // Загружаем изображение рецепта, если оно доступно
+        if (photoUrl != null && !photoUrl.isEmpty()) {
+            // Загружаем с помощью Glide и применяем скругление углов
+            Glide.with(this)
+                 .load(photoUrl)
+                 .placeholder(R.drawable.white_card_background)
+                 .error(R.drawable.white_card_background)
+                 .centerCrop()
+                 .into(recipeImageView);
+            Log.d(TAG, "Загрузка изображения: " + photoUrl);
+        } else {
+            // Если URL отсутствует, устанавливаем фоновое изображение
+            recipeImageView.setImageResource(R.drawable.white_card_background);
+            Log.d(TAG, "URL изображения отсутствует или пуст");
+        }
 
     }
-
-
 
 }
