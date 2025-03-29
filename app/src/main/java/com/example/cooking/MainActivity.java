@@ -28,6 +28,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        addButton = findViewById(R.id.fab_add);
 
         // Настройка нижней навигации
         bottomNavigationView = findViewById(R.id.bottom_navigation);
@@ -37,10 +38,13 @@ public class MainActivity extends AppCompatActivity {
             int itemId = item.getItemId();
             if (itemId == R.id.nav_home) {
                 selectedFragment = new HomeFragment();
+                addButton.show();
             } else if (itemId == R.id.nav_favorites) {
                 selectedFragment = new FavoritesFragment();
+                addButton.hide();
             } else if (itemId == R.id.nav_profile) {
                 selectedFragment = new ProfileFragment();
+                addButton.hide();
             }
 
             if (selectedFragment != null) {
@@ -54,7 +58,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Инициализируем и настраиваем кнопку добавления
-        addButton = findViewById(R.id.fab_add);
+
         addButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {

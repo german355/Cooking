@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -49,16 +50,26 @@ dependencies {
     androidTestImplementation(libs.espresso.core)
     implementation("io.socket:socket.io-client:2.0.0")
     implementation("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
+    implementation ("com.google.android.material:material:1.9.0")
     
     // Добавляем зависимость Google Fonts для загрузки шрифтов
     implementation("androidx.core:core:1.12.0")
 
-    implementation ("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation ("com.squareup.retrofit2:converter-scalars:2.9.0")
+    // Retrofit и связанные библиотеки
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-scalars:2.9.0")
     // Конвертер Gson для обработки JSON
-    implementation ("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     // Gson для работы с JSON
-    implementation ("com.google.code.gson:gson:2.9.0")
+    implementation("com.google.code.gson:gson:2.9.0")
 
     implementation("com.github.bumptech.glide:glide:4.16.0")
+
+    implementation(platform("com.google.firebase:firebase-bom:33.11.0"))
+
+    implementation("com.google.firebase:firebase-analytics")
+    
+    // Firebase Authentication зависимости
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
 }

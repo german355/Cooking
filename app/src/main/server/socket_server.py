@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, url_for, send_from_directory
 import pymysql
 import bcrypt
 from flask_socketio import SocketIO, emit
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -22,6 +23,12 @@ def hash_password(plain_password):
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(plain_password.encode('utf-8'), salt)
     return hashed
+
+
+# Функция для проверки допустимого расширения файла
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # Функция для создания нового подключения к базе данных
@@ -51,34 +58,48 @@ def login():
             return jsonify({'success': False, 'message': 'No JSON data provided'}), 400
 
         email = data.get('email')
-        password = data.get('password')
-        name = data.get('name')
+        firebase_id = data.get('uid')
 
-        if not email or not password:
-            return jsonify({'success': False, 'message': 'Email or password missing'}), 400
+        if not email:
+            return jsonify({'success': False, 'message': 'Email missing'}), 400
 
         conn = get_db_connection()
         with conn.cursor(pymysql.cursors.DictCursor) as cursor:  # Используем DictCursor
-            # Выполняем запрос, включая id в результат
-            sql = "SELECT id, email, password, name, permission FROM users WHERE email=%s"
-            cursor.execute(sql, email)
-            result = cursor.fetchone()
-        conn.close()
-
-        if result:
-            stored_hash = result['password']
-            if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
-                return jsonify({
-                    'success': True,
-                    'userId': result['id'],
-                    'name': result['name'],
-                    'permission': result['permission']
-                })
+            # Сначала проверяем по Firebase UID, если он предоставлен
+            if firebase_id:
+                sql = "SELECT id, email, name, permission FROM users WHERE uid=%s"
+                cursor.execute(sql, (firebase_id,))
+                result = cursor.fetchone()
+                
+                # Если пользователь не найден по UID, но есть email
+                if not result:
+                    # Проверяем по email и обновляем uid если нашли пользователя
+                    sql = "SELECT id, email, name, permission FROM users WHERE email=%s"
+                    cursor.execute(sql, (email,))
+                    result = cursor.fetchone()
+                    
+                    # Если нашли пользователя по email, обновляем uid
+                    if result:
+                        update_sql = "UPDATE users SET uid = %s WHERE email = %s"
+                        cursor.execute(update_sql, (firebase_id, email))
+                        conn.commit()
             else:
-                # Если пароль неверный
-                return jsonify({'success': False, 'message': 'Неверный email или пароль'})
+                # Если firebase_id не предоставлен, ищем только по email
+                sql = "SELECT id, email, name, permission FROM users WHERE email=%s"
+                cursor.execute(sql, (email,))
+                result = cursor.fetchone()
+        
+        if result:
+            conn.close()
+            return jsonify({
+                'success': True,
+                'userId': result['id'],
+                'name': result['name'],
+                'permission': result['permission']
+            }), 200
         else:
-            return jsonify({'success': False, 'message': 'Неверный email или пароль'})
+            conn.close()
+            return jsonify({'success': False, 'message': 'Пользователь не найден'}), 404
 
     except Exception as e:
         print(f"Login error: {str(e)}")
@@ -95,23 +116,27 @@ def register():
             return jsonify({'success': False, 'message': 'No JSON data provided'}), 400
 
         email = data.get('email')
-        password = data.get('password')
         name = data.get('name')
+        firebase_id = data.get('uid')
 
-        print(f"Attempting to register user: {email}")
+        print(f"Attempting to register user: {email}, firebaseId: {firebase_id}")
 
-        if not email or not password:
-            print(f"Registration failed: Missing credentials for {email}")
-            return jsonify({'success': False, 'message': 'Email or password missing'}), 400
-
-        # Проверка минимальной длины пароля
-        if len(password) < 4:
-            print(f"Registration failed: Password too short for {email}")
-            return jsonify({'success': False, 'message': 'Пароль должен содержать минимум 4 символа'}), 400
+        if not email:
+            print(f"Registration failed: Missing email")
+            return jsonify({'success': False, 'message': 'Email missing'}), 400
 
         try:
             conn = get_db_connection()
             with conn.cursor() as cursor:
+                # Проверяем, существует ли уже пользователь с таким firebase_id
+                if firebase_id:
+                    check_firebase_sql = "SELECT * FROM users WHERE uid=%s"
+                    cursor.execute(check_firebase_sql, (firebase_id,))
+                    if cursor.fetchone() is not None:
+                        conn.close()
+                        print(f"Registration failed: User with firebaseId {firebase_id} already exists")
+                        return jsonify({'success': False, 'message': 'Пользователь с таким Firebase ID уже существует'}), 409
+                
                 # Проверяем, существует ли уже пользователь с таким email
                 check_sql = "SELECT * FROM users WHERE email=%s"
                 cursor.execute(check_sql, (email,))
@@ -120,12 +145,32 @@ def register():
                     print(f"Registration failed: User {email} already exists")
                     return jsonify({'success': False, 'message': 'Пользователь с таким email уже существует'}), 409
 
-                insert_sql = "INSERT INTO users (email, password, name) VALUES (%s, %s, %s)"
-                cursor.execute(insert_sql, (email, hash_password(password), name))
+                # Вставляем нового пользователя с firebase_id, если он предоставлен
+                if firebase_id:
+                    insert_sql = "INSERT INTO users (email, name, uid) VALUES (%s, %s, %s)"
+                    cursor.execute(insert_sql, (email, name, firebase_id))
+                else:
+                    insert_sql = "INSERT INTO users (email, name) VALUES (%s, %s)"
+                    cursor.execute(insert_sql, (email, name))
+                
+                # Получаем ID только что зарегистрированного пользователя
+                user_id_sql = "SELECT id, permission FROM users WHERE email=%s"
+                cursor.execute(user_id_sql, (email,))
+                user_data = cursor.fetchone()
+                
             conn.commit()
             conn.close()
+            
+            # Возвращаем более полезный ответ с ID пользователя
             print(f"Registration successful for user: {email}")
-            return jsonify({'success': True, 'message': 'Пользователь успешно зарегистрирован'})
+            return jsonify({
+                'success': True,
+                'message': 'Пользователь успешно зарегистрирован',
+                'userId': user_data['id'],
+                'name': name,
+                'permission': user_data['permission']
+            })
+            
         except Exception as e:
             print(f"Database error during registration for {email}: {str(e)}")
             return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
@@ -146,16 +191,16 @@ def create_recipe():
         return jsonify({'success': False, 'message': 'Все поля (title, ingredients, instructions) обязательны'}), 400
 
     photo_url = None
-   # if 'photo' in request.files:
-    #    photo_file = request.files['photo']
-        #if photo_file and allowed_file(photo_file.filename):
-         #   filename = secure_filename(photo_file.filename)
-          #  file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-           # photo_file.save(file_path)
+    if 'photo' in request.files:
+        photo_file = request.files['photo']
+        if photo_file and allowed_file(photo_file.filename):
+            filename = secure_filename(photo_file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            photo_file.save(file_path)
             # Генерируем URL для доступа к файлу
-            #photo_url = url_for('uploaded_file', filename=filename, _external=True)
-        #else:
-         #   return jsonify({'success': False, 'message': 'Неверный формат файла'}), 400
+            photo_url = url_for('uploaded_file', filename=filename, _external=True)
+        else:
+            return jsonify({'success': False, 'message': 'Неверный формат файла'}), 400
 
     try:
         conn = get_db_connection()
@@ -243,33 +288,41 @@ def get_recipes():
         }), 500
  #Добавления лайка   
 @app.route('/like', methods=['POST'])
-def like_recipe():
+def toggle_like_recipe():
     try:
         data = request.get_json()
         user_id = data.get('userId')
         recipe_id = data.get('recipeId')
-        
+
         if not user_id or not recipe_id:
             return jsonify({'success': False, 'message': 'userId и recipeId обязательны'}), 400
 
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # Проверяем, если лайк уже существует, можно вернуть соответствующее сообщение
+            # Проверяем, есть ли уже запись в таблице лайков
             check_sql = "SELECT * FROM user_likes WHERE user_id = %s AND recipe_id = %s"
             cursor.execute(check_sql, (user_id, recipe_id))
-            if cursor.fetchone() is not None:
+            existing_like = cursor.fetchone()
+
+            if existing_like:
+                # Если лайк уже есть — удаляем его
+                delete_sql = "DELETE FROM user_likes WHERE user_id = %s AND recipe_id = %s"
+                cursor.execute(delete_sql, (user_id, recipe_id))
+                conn.commit()
                 conn.close()
-                return jsonify({'success': False, 'message': 'Рецепт уже лайкнут'}), 409
-            
-            # Если лайка еще нет, вставляем новую запись
-            insert_sql = "INSERT INTO user_likes (user_id, recipe_id) VALUES (%s, %s)"
-            cursor.execute(insert_sql, (user_id, recipe_id))
-        conn.commit()
-        conn.close()
-        return jsonify({'success': True, 'message': 'Лайк добавлен'})
+                return jsonify({'success': True, 'message': 'Лайк удалён', 'liked': False})
+            else:
+                # Если лайка ещё нет — добавляем
+                insert_sql = "INSERT INTO user_likes (user_id, recipe_id) VALUES (%s, %s)"
+                cursor.execute(insert_sql, (user_id, recipe_id))
+                conn.commit()
+                conn.close()
+                return jsonify({'success': True, 'message': 'Лайк добавлен', 'liked': True})
+
     except Exception as e:
-        print(f"Ошибка при лайке рецепта: {str(e)}")
+        print(f"Ошибка при работе с лайками: {str(e)}")
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
 
     
     
