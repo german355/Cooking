@@ -285,7 +285,7 @@ public class StartActivity extends AppCompatActivity {
             // Устанавливаем цвет ошибки на красный
             emailInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
             emailInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            emailInputLayout.setError("неверный формат почты");
+            emailInputLayout.setError("Неверный формат почты");
             return false;
         } else {
             // Сбрасываем ошибку

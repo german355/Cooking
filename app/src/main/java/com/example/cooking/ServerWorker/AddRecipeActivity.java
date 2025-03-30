@@ -489,12 +489,12 @@ public class AddRecipeActivity extends AppCompatActivity {
             titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
             titleInputLayout.setError("Список ингредиентов не может быть пустым");
             return false;
-        } else if (ingredient.length() > 65535) {
+        } else if (ingredient.length() > 2000) {
             TextInputLayout titleInputLayout = findViewById(R.id.recipe_ingredients_layout);
             // Устанавливаем цвет ошибки и текст
             titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
             titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setError("Список ингредиентов содержать более 65535 символов");
+            titleInputLayout.setError("Список ингредиентов не может содержать более 2000 символов");
             return false;
         } else {
             // Сбрасываем сообщение об ошибке
@@ -511,14 +511,14 @@ public class AddRecipeActivity extends AppCompatActivity {
             // Устанавливаем цвет ошибки и текст
             titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
             titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setError("Список ингредиентов не может быть пустым");
+            titleInputLayout.setError("Инструкция не может быть пустой");
             return false;
-        } else if (instructions.length() > 65535) {
+        } else if (instructions.length() > 2000) {
             TextInputLayout titleInputLayout = findViewById(R.id.recipe_instructions_layout);
             // Устанавливаем цвет ошибки и текст
             titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
             titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setError("Список ингредиентов содержать более 65535 символов");
+            titleInputLayout.setError("Инструкция не может содержать более 2000 символов");
             return false;
         } else {
             // Сбрасываем сообщение об ошибке
