@@ -1,5 +1,6 @@
 package com.example.cooking.Recipe;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
@@ -36,6 +37,10 @@ public class RecipeDetailActivity extends AppCompatActivity {
     public static final String EXTRA_RECIPE_FOOD = "recipe_food";
     public static final String EXTRA_RECIPE_PHOTO_URL = "photo_url";
     private static final String TAG = "RecipeDatail";
+    
+    // Переменная состояния лайка, как поле класса
+    private boolean isLiked;
+    private FloatingActionButton fabLike;
 
     /**
      * Инициализирует активность и заполняет её данными о рецепте
@@ -68,7 +73,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
 
         // Находим и настраиваем FAB
         FloatingActionButton fabDelite = findViewById(R.id.delete_button);
-        FloatingActionButton fabLike = findViewById(R.id.like_button);
+        fabLike = findViewById(R.id.like_button);
         MySharedPreferences user = new MySharedPreferences(this);
 
         int permission = user.getInt("permission", 1);
@@ -88,6 +93,11 @@ public class RecipeDetailActivity extends AppCompatActivity {
             Log.d("RecipeDetail","Fab спрятан");
         }
         
+        // Проверяем, лайкнут ли рецепт, на основе переданных данных
+        isLiked = getIntent().getBooleanExtra("isLiked", false);
+        // Если рецепт лайкнут, меняем иконку кнопки
+        updateLikeButtonState();
+        
         // Настраиваем обработчик нажатия на кнопку удаления
         fabDelite.setOnClickListener(view -> {
             RecipeDeleter deleter = new RecipeDeleter(this);
@@ -106,13 +116,18 @@ public class RecipeDetailActivity extends AppCompatActivity {
             });
         });
 
+        final int finalRecipeId = recipeId;
         fabLike.setOnClickListener(view -> {
+            // Переключаем визуальное состояние лайка
+            isLiked = !isLiked;
+            updateLikeButtonState();
+            
             // Заменяем использование класса NewLike прямым API-запросом
             try {
                 // Создаем JSON для запроса
                 JSONObject jsonObject = new JSONObject();
                 jsonObject.put("userId", currentUserId);
-                jsonObject.put("recipeId", recipeId);
+                jsonObject.put("recipeId", finalRecipeId);
                 
                 // Создаем тело запроса
                 RequestBody body = RequestBody.create(jsonObject.toString(), MediaType.parse("application/json; charset=utf-8"));
@@ -135,6 +150,9 @@ public class RecipeDetailActivity extends AppCompatActivity {
                                     "Ошибка сети: " + e.getMessage(), 
                                     Toast.LENGTH_SHORT).show();
                             Log.e(TAG, "Ошибка сети при лайке", e);
+                            // Откатываем состояние если ошибка
+                            isLiked = !isLiked;
+                            updateLikeButtonState();
                         });
                     }
                     
@@ -147,11 +165,21 @@ public class RecipeDetailActivity extends AppCompatActivity {
                                         "Статус лайка изменен", 
                                         Toast.LENGTH_SHORT).show();
                                 Log.d(TAG, "Лайк успешно изменен");
+                                
+                                // Установка результата для возврата в HomeFragment
+                                Intent resultIntent = new Intent();
+                                resultIntent.putExtra("recipe_id", finalRecipeId);
+                                resultIntent.putExtra("isLiked", isLiked);
+                                setResult(RESULT_OK, resultIntent);
                             } else {
                                 Toast.makeText(RecipeDetailActivity.this, 
                                         "Ошибка сервера: " + response.code(), 
                                         Toast.LENGTH_SHORT).show();
                                 Log.e(TAG, "Ошибка сервера при лайке: " + response.code());
+                                
+                                // Откатываем состояние лайка, если произошла ошибка
+                                isLiked = !isLiked;
+                                updateLikeButtonState();
                             }
                         });
                     }
@@ -159,6 +187,9 @@ public class RecipeDetailActivity extends AppCompatActivity {
             } catch (Exception e) {
                 Log.e(TAG, "Ошибка при создании запроса лайка", e);
                 Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                // Откатываем состояние лайка, если произошла ошибка
+                isLiked = !isLiked;
+                updateLikeButtonState();
             }
         });
 
@@ -188,7 +219,16 @@ public class RecipeDetailActivity extends AppCompatActivity {
             recipeImageView.setImageResource(R.drawable.white_card_background);
             Log.d(TAG, "URL изображения отсутствует или пуст");
         }
-
     }
-
+    
+    /**
+     * Обновляет состояние кнопки лайка в зависимости от текущего значения isLiked
+     */
+    private void updateLikeButtonState() {
+        if (isLiked) {
+            fabLike.setImageResource(R.drawable.ic_favorite);
+        } else {
+            fabLike.setImageResource(R.drawable.ic_favorite_border);
+        }
+    }
 }

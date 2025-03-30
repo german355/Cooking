@@ -35,6 +35,7 @@ import okhttp3.OkHttpClient;
 import okhttp3.RequestBody;
 import org.json.JSONObject;
 import okhttp3.Request;
+import android.app.Activity;
 
 /**
  * Фрагмент главного экрана.
@@ -141,6 +142,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
                 final List<Integer> likedIds = new ArrayList<>();
                 for (Recipe recipe : likedRecipes) {
                     likedIds.add(recipe.getId());
+                    Log.d(TAG, "Лайкнутый рецепт ID: " + recipe.getId());
                 }
                 
                 // Теперь загружаем все рецепты и отмечаем избранные
@@ -149,8 +151,9 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
                     public void onRecipesLoaded(List<Recipe> allRecipes) {
                         // Отмечаем избранные рецепты
                         for (Recipe recipe : allRecipes) {
+                            recipe.setLiked(likedIds.contains(recipe.getId()));
                             if (likedIds.contains(recipe.getId())) {
-                                recipe.setLiked(true);
+                                Log.d(TAG, "Отметили рецепт как лайкнутый: " + recipe.getId());
                             }
                         }
                         
@@ -392,12 +395,9 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     @Override
     public void onResume() {
         super.onResume();
-        // Добавляем проверку, нужно ли перезагружать рецепты
-        // Загружаем рецепты только при первом открытии или после действий, требующих обновления
-        if (adapter.getItemCount() == 0) {
-            // Загружаем рецепты только если список пуст
-            loadRecipes();
-        }
+        // Всегда обновляем список рецептов при возвращении на экран
+        // для синхронизации состояния лайков между активностями
+        loadRecipes();
     }
 
     /**
@@ -481,5 +481,31 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         showLoading(true);
         
         repository.getRecipes(this);
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        if (requestCode == 100 && resultCode == Activity.RESULT_OK && data != null) {
+            // Получаем ID рецепта и новое состояние лайка
+            int recipeId = data.getIntExtra("recipe_id", -1);
+            boolean isLiked = data.getBooleanExtra("isLiked", false);
+            
+            if (recipeId != -1) {
+                Log.d(TAG, "Получен результат: рецепт ID " + recipeId + ", лайкнут: " + isLiked);
+                
+                // Обновляем состояние конкретного рецепта в списке
+                for (int i = 0; i < adapter.getItemCount(); i++) {
+                    Recipe recipe = adapter.getRecipeAt(i);
+                    if (recipe != null && recipe.getId() == recipeId) {
+                        Log.d(TAG, "Обновляем состояние лайка для рецепта " + recipeId);
+                        recipe.setLiked(isLiked);
+                        adapter.notifyItemChanged(i);
+                        break;
+                    }
+                }
+            }
+        }
     }
 }

@@ -14,6 +14,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.appcompat.app.AppCompatActivity;
 
 import com.bumptech.glide.Glide;
 import com.example.cooking.R;
@@ -135,11 +136,15 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
             intent.putExtra("Created_at", recipe.getCreated_at());
             intent.putExtra("userId", recipe.getUserId());
             intent.putExtra("photo_url", recipe.getPhoto_url());
+            // Передаем состояние лайка
+            intent.putExtra("isLiked", recipe.isLiked());
             Log.d("Id", recipe.getUserId());
             if (recipe.getPhoto_url() != null) {
                 Log.d("RecipeAdapter", "Photo URL: " + recipe.getPhoto_url());
             }
-            v.getContext().startActivity(intent);
+            
+            // Запускаем активность с ожиданием результата
+            ((AppCompatActivity) v.getContext()).startActivityForResult(intent, 100);
         });
     }
 
