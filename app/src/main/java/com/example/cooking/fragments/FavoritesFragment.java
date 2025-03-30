@@ -1,7 +1,5 @@
-package com.example.cooking;
+package com.example.cooking.fragments;
 
-import android.content.res.ColorStateList;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -16,10 +14,11 @@ import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
+import com.example.cooking.MySharedPreferences;
+import com.example.cooking.R;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
 import com.example.cooking.ServerWorker.LikedRecipesRepository;
-import com.example.cooking.fragments.EmptyFavoritesFragment;
 import com.google.android.material.progressindicator.CircularProgressIndicator;
 
 import java.util.ArrayList;
@@ -78,6 +77,21 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
         // Дополнительная настройка SearchView для обеспечения кликабельности
         searchView.setIconifiedByDefault(false);  // Поле всегда открыто
         searchView.setSubmitButtonEnabled(false); // Убираем кнопку подтверждения для чистоты интерфейса
+        
+        // Программно удаляем нижнюю линию из SearchView
+        int searchPlateId = searchView.getContext().getResources().getIdentifier("android:id/search_plate", null, null);
+        View searchPlate = searchView.findViewById(searchPlateId);
+        if (searchPlate != null) {
+            searchPlate.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+            // Находим EditText внутри SearchView и убираем у него подчеркивание
+            int searchSrcTextId = getResources().getIdentifier("android:id/search_src_text", null, null);
+            android.widget.EditText searchEditText = searchView.findViewById(searchSrcTextId);
+            if (searchEditText != null) {
+                searchEditText.setBackground(null);
+                searchEditText.setHintTextColor(getResources().getColor(R.color.md_theme_onSurfaceVariant, null));
+                searchEditText.setTextColor(getResources().getColor(R.color.md_theme_onSurface, null));
+            }
+        }
         
         // Обеспечиваем кликабельность по всему полю
         searchView.setOnClickListener(v -> {

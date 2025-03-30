@@ -1,4 +1,4 @@
-package com.example.cooking;
+package com.example.cooking.Recipe;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -10,6 +10,9 @@ import android.widget.TextView;
 import androidx.fragment.app.Fragment;
 import com.example.cooking.FireBase.FirebaseAuthManager;
 import com.example.cooking.FireBase.FirebaseUserManager;
+import com.example.cooking.MySharedPreferences;
+import com.example.cooking.R;
+import com.example.cooking.StartActivity;
 
 /**
  * Фрагмент для отображения профиля пользователя и настроек приложения
