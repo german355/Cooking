@@ -175,7 +175,10 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
                 // Обновляем UI
                 updateRecipesList(recipes);
                 
-                Toast.makeText(getContext(), "Список лайкнутых рецептов обновлен", Toast.LENGTH_SHORT).show();
+                // Проверяем, что контекст доступен перед показом Toast
+                if (getContext() != null) {
+                    Toast.makeText(getContext(), "Список лайкнутых рецептов обновлен", Toast.LENGTH_SHORT).show();
+                }
                 Log.d(TAG, "Обновлено " + recipes.size() + " лайкнутых рецептов");
             }
 
@@ -240,53 +243,57 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
      * Показывает фрагмент пустого состояния избранного
      */
     private void showEmptyFavoritesFragment() {
-        // Скрываем основной контент
-        recyclerView.setVisibility(View.GONE);
-        emptyView.setVisibility(View.GONE);
-        
-        // Находим и делаем видимым контейнер для пустого состояния
-        View emptyContainer = getView().findViewById(R.id.empty_container_favorites);
-        if (emptyContainer != null) {
-            emptyContainer.setVisibility(View.VISIBLE);
+        View rootView = getView();
+        if (rootView != null) {
+            // Скрываем основной контент
+            recyclerView.setVisibility(View.GONE);
+            emptyView.setVisibility(View.GONE);
             
-            // Показываем фрагмент с пустым состоянием
-            getChildFragmentManager().beginTransaction()
-                    .replace(R.id.empty_container_favorites, new EmptyFavoritesFragment())
-                    .commit();
+            // Находим и делаем видимым контейнер для пустого состояния
+            View emptyContainer = rootView.findViewById(R.id.empty_container_favorites);
+            if (emptyContainer != null) {
+                emptyContainer.setVisibility(View.VISIBLE);
+            }
         } else {
-            // Если контейнер не найден, используем стандартное пустое представление
-            emptyView.setVisibility(View.VISIBLE);
+            Log.w(TAG, "Не удалось показать пустой фрагмент: View == null");
         }
     }
 
-    private void showEmptyView() {
-        // Если у нас есть контейнер для пустого состояния, используем EmptyFavoritesFragment
-        if (getView() != null && getView().findViewById(R.id.empty_container_favorites) != null) {
-            showEmptyFavoritesFragment();
+    /**
+     * Скрывает фрагмент пустого состояния избранного
+     */
+    private void hideEmptyView() {
+        View rootView = getView();
+        if (rootView != null) {
+            View emptyContainer = rootView.findViewById(R.id.empty_container_favorites);
+            if (emptyContainer != null) {
+                emptyContainer.setVisibility(View.GONE);
+            }
+            emptyView.setVisibility(View.GONE); // Убеждаемся, что сообщение об ошибке скрыто
+            recyclerView.setVisibility(View.VISIBLE); // Показываем RecyclerView
         } else {
-            // Иначе показываем базовое пустое состояние
-            emptyView.setVisibility(View.VISIBLE);
-            recyclerView.setVisibility(View.GONE);
+            Log.w(TAG, "Не удалось скрыть пустой вид: View == null");
         }
     }
     
-    private void hideEmptyView() {
-        emptyView.setVisibility(View.GONE);
-        recyclerView.setVisibility(View.VISIBLE);
-        
-        // Удаляем EmptyFavoritesFragment если он показан
-        Fragment emptyFragment = getChildFragmentManager().findFragmentById(R.id.empty_container_favorites);
-        if (emptyFragment != null) {
-            getChildFragmentManager().beginTransaction()
-                    .remove(emptyFragment)
-                    .commit();
-        }
-        
-        // Скрываем контейнер
-        if (getView() != null) {
-            View emptyContainer = getView().findViewById(R.id.empty_container_favorites);
-            if (emptyContainer != null) {
-                emptyContainer.setVisibility(View.GONE);
+    /**
+     * Показывает сообщение об ошибке
+     */
+    private void showError(String message) {
+        View rootView = getView();
+        if (rootView != null) {
+            hideLoading(); // Скрываем индикатор загрузки
+            hideEmptyView(); // Скрываем контейнер пустого состояния
+            emptyView.setText(message);
+            emptyView.setVisibility(View.VISIBLE);
+            recyclerView.setVisibility(View.GONE); // Скрываем список
+        } else {
+            Log.w(TAG, "Не удалось показать ошибку: View == null");
+            // Показываем Toast как запасной вариант, только если контекст доступен
+            if (getContext() != null) {
+                Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
+            } else {
+                Log.e(TAG, "Не удалось показать сообщение об ошибке: Context == null, сообщение: " + message);
             }
         }
     }
@@ -295,25 +302,30 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
      * Показывает индикатор загрузки
      */
     private void showLoading() {
-        progressIndicator.setVisibility(View.VISIBLE);
-        recyclerView.setVisibility(View.GONE);
-        emptyView.setVisibility(View.GONE);
+        View rootView = getView();
+        if (rootView != null && progressIndicator != null && recyclerView != null && emptyView != null) {
+            progressIndicator.setVisibility(View.VISIBLE);
+            recyclerView.setVisibility(View.GONE);
+            emptyView.setVisibility(View.GONE);
+            View emptyContainer = rootView.findViewById(R.id.empty_container_favorites);
+            if (emptyContainer != null) {
+                emptyContainer.setVisibility(View.GONE);
+            }
+        } else {
+            Log.w(TAG, "Не удалось показать индикатор загрузки: View или компоненты == null");
+        }
     }
     
     /**
      * Скрывает индикатор загрузки
      */
     private void hideLoading() {
-        progressIndicator.setVisibility(View.GONE);
-        recyclerView.setVisibility(View.VISIBLE);
-    }
-    
-    /**
-     * Показывает сообщение об ошибке
-     */
-    private void showError(String message) {
-        if (getContext() != null) {
-            Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+        View rootView = getView();
+        if (rootView != null && progressIndicator != null) {
+            progressIndicator.setVisibility(View.GONE);
+            // Отображение RecyclerView или emptyView управляется отдельно
+        } else {
+            Log.w(TAG, "Не удалось скрыть индикатор загрузки: View или progressIndicator == null");
         }
     }
     
@@ -382,7 +394,9 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
                     Log.e(TAG, "Ошибка сети при изменении лайка", e);
                     if (getActivity() != null) {
                         getActivity().runOnUiThread(() -> {
-                            Toast.makeText(getContext(), "Ошибка сети: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            if (getContext() != null) {
+                                Toast.makeText(getContext(), "Ошибка сети: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            }
                         });
                     }
                 }
@@ -395,7 +409,9 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
                         Log.e(TAG, "Ошибка сервера при изменении лайка: " + response.code());
                         if (getActivity() != null) {
                             getActivity().runOnUiThread(() -> {
-                                Toast.makeText(getContext(), "Ошибка сервера: " + response.code(), Toast.LENGTH_SHORT).show();
+                                if (getContext() != null) {
+                                    Toast.makeText(getContext(), "Ошибка сервера: " + response.code(), Toast.LENGTH_SHORT).show();
+                                }
                             });
                         }
                     }

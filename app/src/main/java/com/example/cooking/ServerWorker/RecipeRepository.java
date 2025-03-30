@@ -327,8 +327,8 @@ public class RecipeRepository {
                     recipe.setIngredients(recipeJson.optString("ingredients", ""));
                     recipe.setInstructions(recipeJson.optString("instructions", ""));
                     recipe.setPhoto_url(recipeJson.optString("photo", ""));
-                    Log.i("photo", recipeJson.optString("photo", ""));
                     recipe.setCreated_at(recipeJson.optString("created_at", ""));
+                    Log.d("Created_at", recipeJson.optString("created_at"));
                     recipe.setUserId(recipeJson.optString("userId", ""));
                     recipes.add(recipe);
                 }
