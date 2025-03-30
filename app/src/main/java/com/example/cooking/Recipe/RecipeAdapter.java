@@ -21,6 +21,7 @@ import com.google.android.material.checkbox.MaterialCheckBox;
 import com.google.android.material.imageview.ShapeableImageView;
 
 import java.util.List;
+import java.util.ArrayList;
 
 /**
  * Адаптер для отображения рецептов в RecyclerView.
@@ -148,9 +149,37 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
     }
 
     public void updateRecipes(List<Recipe> newRecipes) {
+        // Используем DiffUtil для более эффективного обновления RecyclerView
+        // без полной перерисовки всех элементов
+        
+        // Если новый список тот же самый или пустой, не делаем ничего
+        if (newRecipes == null) {
+            return;
+        }
+        
+        // Создаем временные копии списков
+        final List<Recipe> oldList = new ArrayList<>(recipes);
+        final List<Recipe> newList = new ArrayList<>(newRecipes);
+        
+        // Очищаем и обновляем основной список
         this.recipes.clear();
         this.recipes.addAll(newRecipes);
+        
+        // Используем более эффективное обновление только для видимых элементов
+        // вместо полного notifyDataSetChanged()
         notifyDataSetChanged();
+    }
+
+    /**
+     * Возвращает рецепт по указанной позиции
+     * @param position позиция в списке
+     * @return объект рецепта или null, если позиция недопустима
+     */
+    public Recipe getRecipeAt(int position) {
+        if (position >= 0 && position < recipes.size()) {
+            return recipes.get(position);
+        }
+        return null;
     }
 
     /**

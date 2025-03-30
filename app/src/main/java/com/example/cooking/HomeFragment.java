@@ -77,17 +77,28 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         
         // Инициализация и настройка SearchView
         SearchView searchView = view.findViewById(R.id.search_view_main);
+        
+        // Дополнительная настройка SearchView для обеспечения кликабельности
+        searchView.setIconifiedByDefault(false);  // Поле всегда открыто
+        searchView.setSubmitButtonEnabled(false); // Убираем кнопку подтверждения для чистоты интерфейса
+        
+        // Обеспечиваем кликабельность по всему полю
+        searchView.setOnClickListener(v -> {
+            searchView.setIconified(false);
+            searchView.requestFocusFromTouch();
+        });
+        
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
-                performSearch(query);
+                //performSearch(query);
                 return true;
             }
 
             @Override
             public boolean onQueryTextChange(String newText) {
                 // Опционально: поиск при вводе текста
-                // performSearch(newText);
+                performSearch(newText);
                 return true;
             }
         });
@@ -174,13 +185,29 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
             return;
         }
         
+        // Мгновенно обновляем UI-состояние (без перезагрузки)
+        recipe.setLiked(isLiked);
+        
+        // Обновляем только измененный элемент, а не весь список
+        int position = -1;
+        for (int i = 0; i < adapter.getItemCount(); i++) {
+            if (adapter.getRecipeAt(i).getId() == recipe.getId()) {
+                position = i;
+                break;
+            }
+        }
+        
+        if (position != -1) {
+            adapter.notifyItemChanged(position);
+        }
+        
         try {
             // Создаем JSON для запроса
             JSONObject jsonObject = new JSONObject();
             jsonObject.put("userId", userId);
             jsonObject.put("recipeId", recipe.getId());
             
-            // Отправляем запрос на сервер
+            // Отправляем запрос на сервер без вызова refresh
             toggleLikeOnServer(jsonObject.toString(), recipe, isLiked);
         } catch (Exception e) {
             Log.e(TAG, "Ошибка при создании JSON для запроса лайка", e);
@@ -192,7 +219,8 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
      * Отправляет запрос на сервер для добавления/удаления лайка
      */
     private void toggleLikeOnServer(String jsonBody, Recipe recipe, boolean isLiked) {
-        showLoading(true);
+        // Для лайка не нужен полный индикатор загрузки - это быстрая операция
+        // showLoading(true);
         
         try {
             // Создаем тело запроса
@@ -209,7 +237,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
                 @Override
                 public void onFailure(okhttp3.Call call, java.io.IOException e) {
                     requireActivity().runOnUiThread(() -> {
-                        showLoading(false);
+                        // showLoading(false);
                         Toast.makeText(requireContext(), 
                                 "Ошибка сети: " + e.getMessage(), 
                                 Toast.LENGTH_SHORT).show();
@@ -224,7 +252,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
                 public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
                     final boolean success = response.isSuccessful();
                     requireActivity().runOnUiThread(() -> {
-                        showLoading(false);
+                        // showLoading(false);
                         if (success) {
                             // Сообщение в зависимости от статуса лайка
                             String message = isLiked ? 
@@ -243,13 +271,28 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
                 }
             });
         } catch (Exception e) {
-            showLoading(false);
+            // showLoading(false);
             Log.e(TAG, "Ошибка при отправке запроса лайка", e);
             Toast.makeText(requireContext(), "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
             // Возвращаем состояние кнопки
             recipe.setLiked(!isLiked);
             adapter.notifyDataSetChanged();
         }
+    }
+    
+    /**
+     * Легкий индикатор загрузки, не скрывающий основной контент.
+     * Используется для операций, не требующих перезагрузки всего списка.
+     */
+    private void showLightLoading(boolean show) {
+        if (swipeRefreshLayout.isRefreshing()) {
+            if (!show) {
+                swipeRefreshLayout.setRefreshing(false);
+            }
+        } else {
+            progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
+        }
+        // В отличие от showLoading, мы не скрываем recyclerView и emptyView
     }
     
     /**
@@ -349,7 +392,12 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     @Override
     public void onResume() {
         super.onResume();
-        loadRecipes();
+        // Добавляем проверку, нужно ли перезагружать рецепты
+        // Загружаем рецепты только при первом открытии или после действий, требующих обновления
+        if (adapter.getItemCount() == 0) {
+            // Загружаем рецепты только если список пуст
+            loadRecipes();
+        }
     }
 
     /**

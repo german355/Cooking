@@ -14,10 +14,15 @@ import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.bumptech.glide.request.RequestOptions;
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
-import com.example.cooking.ServerWorker.NewLike;
 import com.example.cooking.ServerWorker.RecipeDeleter;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.imageview.ShapeableImageView;
+
+import org.json.JSONObject;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
 
 /**
  * Активность для отображения подробной информации о рецепте.
@@ -102,19 +107,59 @@ public class RecipeDetailActivity extends AppCompatActivity {
         });
 
         fabLike.setOnClickListener(view -> {
-            NewLike like = new NewLike(this);
-            Toast.makeText(this, "Like button clicked", Toast.LENGTH_SHORT).show();
-            like.likeRecipe(recipeId, currentUserId, new NewLike.DeleteRecipeCallback() {
-                @Override
-                public void onDeleteSuccess() {
-                    Log.d("LikeRecipe", "it's liked");
-                }
-
-                @Override
-                public void onDeleteFailure(String error) {
-                    Log.d("Liked Recipe", "error");
-                }
-            });
+            // Заменяем использование класса NewLike прямым API-запросом
+            try {
+                // Создаем JSON для запроса
+                JSONObject jsonObject = new JSONObject();
+                jsonObject.put("userId", currentUserId);
+                jsonObject.put("recipeId", recipeId);
+                
+                // Создаем тело запроса
+                RequestBody body = RequestBody.create(jsonObject.toString(), MediaType.parse("application/json; charset=utf-8"));
+                
+                // Создаем запрос к API
+                Request request = new Request.Builder()
+                        .url("http://g3.veroid.network:19029/like")
+                        .post(body)
+                        .build();
+                
+                // Создаем OkHttpClient
+                OkHttpClient client = new OkHttpClient();
+                
+                // Выполняем запрос асинхронно
+                client.newCall(request).enqueue(new okhttp3.Callback() {
+                    @Override
+                    public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(RecipeDetailActivity.this, 
+                                    "Ошибка сети: " + e.getMessage(), 
+                                    Toast.LENGTH_SHORT).show();
+                            Log.e(TAG, "Ошибка сети при лайке", e);
+                        });
+                    }
+                    
+                    @Override
+                    public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
+                        final boolean success = response.isSuccessful();
+                        runOnUiThread(() -> {
+                            if (success) {
+                                Toast.makeText(RecipeDetailActivity.this, 
+                                        "Статус лайка изменен", 
+                                        Toast.LENGTH_SHORT).show();
+                                Log.d(TAG, "Лайк успешно изменен");
+                            } else {
+                                Toast.makeText(RecipeDetailActivity.this, 
+                                        "Ошибка сервера: " + response.code(), 
+                                        Toast.LENGTH_SHORT).show();
+                                Log.e(TAG, "Ошибка сервера при лайке: " + response.code());
+                            }
+                        });
+                    }
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Ошибка при создании запроса лайка", e);
+                Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
         });
 
         // Находим TextView для названия, ингредиентов и инструкций

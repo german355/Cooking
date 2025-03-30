@@ -74,6 +74,17 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
         
         // Инициализация и настройка SearchView
         SearchView searchView = view.findViewById(R.id.search_view_favorite);
+        
+        // Дополнительная настройка SearchView для обеспечения кликабельности
+        searchView.setIconifiedByDefault(false);  // Поле всегда открыто
+        searchView.setSubmitButtonEnabled(false); // Убираем кнопку подтверждения для чистоты интерфейса
+        
+        // Обеспечиваем кликабельность по всему полю
+        searchView.setOnClickListener(v -> {
+            searchView.setIconified(false);
+            searchView.requestFocusFromTouch();
+        });
+        
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
@@ -309,8 +320,10 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
     @Override
     public void onResume() {
         super.onResume();
-        // Обновляем список при возвращении на экран
-        loadLikedRecipes();
+        // Загружаем список только если он пуст
+        if (adapter.getItemCount() == 0) {
+            loadLikedRecipes();
+        }
     }
 
     /**
@@ -322,18 +335,21 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
         
         if (!isLiked) {
             // Если рецепт был удален из избранного, удаляем его из списка
-            allLikedRecipes.remove(recipe);
-            
-            // Обновляем RecyclerView
-            List<Recipe> currentRecipes = new ArrayList<>(allLikedRecipes);
-            updateRecipesList(currentRecipes);
-            
-            // Отправляем запрос на сервер
-            toggleLikeOnServer(recipe, false);
-            
-            if (currentRecipes.isEmpty()) {
-                showEmptyFavoritesFragment();
+            int position = allLikedRecipes.indexOf(recipe);
+            if (position != -1) {
+                allLikedRecipes.remove(position);
+                
+                // Обновляем только удаленный элемент, не весь список
+                adapter.notifyItemRemoved(position);
+                
+                // Если список пуст, показываем пустое состояние
+                if (allLikedRecipes.isEmpty()) {
+                    showEmptyFavoritesFragment();
+                }
             }
+            
+            // Отправляем запрос на сервер без вызова полной перезагрузки
+            toggleLikeOnServer(recipe, false);
         } else {
             // Если рецепт добавлен в избранное (что странно в данном фрагменте),
             // просто обновляем состояние на сервере
@@ -347,8 +363,8 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
     private void toggleLikeOnServer(Recipe recipe, boolean isLiked) {
         try {
             JSONObject jsonObject = new JSONObject();
-            jsonObject.put("recipe_id", recipe.getId());
-            jsonObject.put("user_id", userId);
+            jsonObject.put("recipeId", recipe.getId());
+            jsonObject.put("userId", userId);
             
             String jsonBody = jsonObject.toString();
             Log.d(TAG, "Отправка запроса лайка: " + jsonBody);

@@ -6,6 +6,10 @@
         <item name="queryBackground">@android:color/transparent</item>
         <item name="iconifiedByDefault">false</item>
         <item name="queryHint">@string/search</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+        <item name="submitBackground">@android:color/transparent</item>
     </style>
     
     <!-- Стиль для карточек рецептов -->
