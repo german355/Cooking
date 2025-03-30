@@ -108,18 +108,6 @@ public class StartActivity extends AppCompatActivity {
                 Intent intent = new Intent(StartActivity.this, Regist.class);
                 startActivity(intent);
             });
-
-            // Обработчик для входа через сервер
-            /*loginButton.setOnClickListener(v -> {
-                String email = emailEditText.getText().toString();
-
-                // Запускаем асинхронную задачу для входа
-                new LoginTask(this).execute(email);
-                
-                // Показываем индикатор загрузки
-                loginButton.setEnabled(false);
-                loginButton.setText("Подождите...");
-            });*/
             
             // Обработчик для входа через Firebase с email/password
             setupFirebaseLoginButton();

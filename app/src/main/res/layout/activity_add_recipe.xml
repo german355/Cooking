@@ -24,16 +24,35 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="16dp">
+            android:padding="16dp"
+            >
 
-            <ImageView
-                android:id="@+id/recipe_image"
+            <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Выберите изображение*"
+                    android:textSize="18dp"
+                    android:id="@+id/textImage">
+
+            </TextView>
+
+            <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
-                android:layout_height="200dp"
-                android:scaleType="centerCrop"
-                android:contentDescription="Фото рецепта"
-                android:background="#EEEEEE" />
-                
+                android:layout_height="220dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="4dp"
+                android:layout_marginBottom="8dp">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/recipe_image"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Фото рецепта"
+                    android:background="#F5F5F5"
+                    app:shapeAppearanceOverlay="@style/RoundedImageView" />
+            </com.google.android.material.card.MaterialCardView>
+
             <Button
                 android:id="@+id/btn_select_image"
                 android:layout_width="match_parent"
@@ -42,58 +61,55 @@
                 android:layout_marginTop="8dp"
                 android:layout_marginBottom="16dp" />
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Название рецепта"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/recipe_title"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/recipe_title_layout"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:hint="Например: Русская уха"
-                android:inputType="text"
-                android:maxLines="1"
-                android:background="@drawable/edit_text_gradient_background"
-                android:elevation="1dp" />
+                android:hint="Название рецепта*">
 
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Ингредиенты"
-                android:textStyle="bold" />
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/recipe_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="2" />
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <EditText
-                android:id="@+id/recipe_ingredients"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                android:gravity="top"
-                android:hint="Перечислите все необходимые ингредиенты"
-                android:inputType="textMultiLine"
-                android:minLines="3"
-                android:background="@drawable/edit_text_gradient_background"
-                android:elevation="1dp" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Инструкции по приготовлению"
-                android:textStyle="bold" />
-
-            <EditText
-                android:id="@+id/recipe_instructions"
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/recipe_ingredients_layout"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
-                android:gravity="top"
-                android:hint="Опишите подробно процесс приготовления"
-                android:inputType="textMultiLine"
-                android:minLines="5"
-                android:background="@drawable/edit_text_gradient_background"
-                android:elevation="1dp" />
+                android:hint="Ингредиенты*">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/recipe_ingredients"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="top"
+                    android:inputType="textMultiLine"
+                    android:minLines="3" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/recipe_instructions_layout"
+                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp"
+                android:hint="Инструкции по приготовлению*">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/recipe_instructions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="top"
+                    android:inputType="textMultiLine"
+                    android:minLines="5" />
+            </com.google.android.material.textfield.TextInputLayout>
 
         </LinearLayout>
     </ScrollView>

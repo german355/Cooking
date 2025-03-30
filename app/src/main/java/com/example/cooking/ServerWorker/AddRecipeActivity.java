@@ -4,8 +4,10 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -13,14 +15,13 @@ import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
+import android.text.Editable;
+import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.ImageView;
-import android.widget.ProgressBar;
-import android.widget.Toast;
+import android.widget.*;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -31,6 +32,8 @@ import androidx.core.content.ContextCompat;
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
 
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -46,7 +49,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.MultipartBody;
 
-import com.google.gson.annotations.SerializedName;
+import static com.example.cooking.R.drawable.dowloadimage2;
 
 
 public class AddRecipeActivity extends AppCompatActivity {
@@ -54,10 +57,10 @@ public class AddRecipeActivity extends AppCompatActivity {
     private static final int REQUEST_STORAGE_PERMISSION = 1001;
     private static final int REQUEST_PICK_IMAGE = 1002;
     
-    private EditText titleEditText;
+    private TextInputEditText titleEditText;
     private MySharedPreferences user;
-    private EditText ingredientsEditText;
-    private EditText instructionsEditText;
+    private TextInputEditText ingredientsEditText;
+    private TextInputEditText instructionsEditText;
     private Button saveButton;
     private ProgressBar progressBar;
     
@@ -80,6 +83,7 @@ public class AddRecipeActivity extends AppCompatActivity {
         setContentView(R.layout.activity_add_recipe);
         Log.d(TAG, "onCreate: Layout установлен - activity_add_recipe");
 
+
         // Настраиваем toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -96,6 +100,7 @@ public class AddRecipeActivity extends AppCompatActivity {
         
         // Инициализируем новые компоненты для работы с изображениями
         recipeImageView = findViewById(R.id.recipe_image);
+        recipeImageView.setImageResource(dowloadimage2);
         selectImageButton = findViewById(R.id.btn_select_image);
         
         Log.d(TAG, "onCreate: Все UI элементы инициализированы");
@@ -105,12 +110,39 @@ public class AddRecipeActivity extends AppCompatActivity {
         Log.d(TAG, user.getString("userId", "99"));
         Log.d(TAG, "onCreate: SharedPreferences инициализирован");
 
+        titleEditText.addTextChangedListener(new TextWatcher(){
+
+            @Override
+            public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+
+            }
+
+            @Override
+            public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
+
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                validateTitle(s.toString());
+            }
+        });
+
         // Настраиваем обработчик кнопки "Сохранить"
         saveButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Log.d(TAG, "onClick: Нажата кнопка 'Сохранить'");
-                saveRecipe();
+                String title = titleEditText.getText().toString();
+                String ingredient = ingredientsEditText.getText().toString();
+                String instructions = instructionsEditText.getText().toString();
+                //Log.d(TAG, "onClick: Нажата кнопка 'Сохранить'");
+                if (validateTitle(title) && validateIngredient(ingredient) && validateinstructions(instructions) && validatephoto(imageBytes)){
+                    saveRecipe();
+                }else{
+                    validateIngredient(ingredient);
+                    validateinstructions(instructions);
+                    validatephoto(imageBytes);
+                }
             }
         });
         Log.d(TAG, "onCreate: Обработчик кнопки 'Сохранить' настроен");
@@ -260,14 +292,7 @@ public class AddRecipeActivity extends AppCompatActivity {
                 ", instructions length: " + instructions.length() +
                 ", userId: " + id);
 
-        // Проверяем, что все поля заполнены
-        if (title.isEmpty() || ingredients.isEmpty() || instructions.isEmpty()) {
-            Log.w(TAG, "saveRecipe: Не все поля заполнены - title: " + (title.isEmpty() ? "пусто" : "заполнено") +
-                    ", ingredients: " + (ingredients.isEmpty() ? "пусто" : "заполнено") +
-                    ", instructions: " + (instructions.isEmpty() ? "пусто" : "заполнено"));
-            Toast.makeText(this, "Заполните все поля", Toast.LENGTH_SHORT).show();
-            return;
-        }
+
 
         // Показываем индикатор загрузки и блокируем кнопку
         progressBar.setVisibility(View.VISIBLE);
@@ -427,6 +452,103 @@ public class AddRecipeActivity extends AppCompatActivity {
                 Log.e(TAG, "SaveRecipeTask.onPostExecute: Ошибка: " + message);
                 Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
             }
+        }
+    }
+
+    private boolean validateTitle(String title) {
+        if (TextUtils.isEmpty(title) || title.length() < 2) {
+            // Получаем TextInputLayout для названия рецепта
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_title_layout);
+            // Устанавливаем цвет ошибки и текст
+            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setError("Название рецепта не может быть пустым и короче 2 символов");
+            return false;
+        } else if (title.length() > 255 ) {
+            // Получаем TextInputLayout для названия рецепта
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_title_layout);
+            // Устанавливаем цвет ошибки и текст
+            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setError("Название рецепта не должно превышать 255 символов");
+            return false;
+        } else {
+            // Сбрасываем сообщение об ошибке
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_title_layout);
+            titleInputLayout.setError(null);
+            return true;
+        }
+    }
+
+    private boolean validateIngredient(String ingredient) {
+        if (TextUtils.isEmpty(ingredient)) {
+            // Получаем TextInputLayout для названия рецепта
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_ingredients_layout);
+            // Устанавливаем цвет ошибки и текст
+            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setError("Список ингредиентов не может быть пустым");
+            return false;
+        } else if (ingredient.length() > 65535) {
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_ingredients_layout);
+            // Устанавливаем цвет ошибки и текст
+            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setError("Список ингредиентов содержать более 65535 символов");
+            return false;
+        } else {
+            // Сбрасываем сообщение об ошибке
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_ingredients_layout);
+            titleInputLayout.setError(null);
+            return true;
+        }
+    }
+
+    private boolean validateinstructions(String instructions) {
+        if (TextUtils.isEmpty(instructions)) {
+            // Получаем TextInputLayout для названия рецепта
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_instructions_layout);
+            // Устанавливаем цвет ошибки и текст
+            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setError("Список ингредиентов не может быть пустым");
+            return false;
+        } else if (instructions.length() > 65535) {
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_instructions_layout);
+            // Устанавливаем цвет ошибки и текст
+            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
+            titleInputLayout.setError("Список ингредиентов содержать более 65535 символов");
+            return false;
+        } else {
+            // Сбрасываем сообщение об ошибке
+            TextInputLayout titleInputLayout = findViewById(R.id.recipe_instructions_layout);
+            titleInputLayout.setError(null);
+            return true;
+        }
+    }
+
+    private boolean validatephoto(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            // Получаем TextView и меняем цвет текста на красный
+            TextView textImageView = findViewById(R.id.textImage);
+            if (textImageView != null) {
+                textImageView.setTextColor(Color.RED);
+                // Можно также изменить текст для большей наглядности
+
+            }
+            
+            // Показываем Toast с сообщением
+            Toast.makeText(this, "Пожалуйста, выберите изображение", Toast.LENGTH_SHORT).show();
+            return false;
+        } else {
+            // Возвращаем нормальный цвет текста
+            TextView textImageView = findViewById(R.id.textImage);
+            if (textImageView != null) {
+                textImageView.setTextColor(Color.BLACK); // Стандартный цвет текста
+                textImageView.setText("Выберите изображение");
+            }
+            return true;
         }
     }
 }
