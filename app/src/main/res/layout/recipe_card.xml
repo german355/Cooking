@@ -9,19 +9,43 @@
     android:layout_margin="8dp"
     style="@style/Widget.App.CardView">
 
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:layout_height="wrap_content">
 
-        <com.google.android.material.imageview.ShapeableImageView
-            android:id="@+id/recipe_image"
+        <!-- Контейнер для изображения -->
+        <FrameLayout
+            android:id="@+id/image_container"
             android:layout_width="match_parent"
             android:layout_height="120dp"
-            android:scaleType="centerCrop"
-            android:src="@drawable/ic_launcher_background"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.App.CornerTop"
-            android:contentDescription="Изображение рецепта"/>
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/recipe_image"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_launcher_background"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.App.CornerTop"
+                android:contentDescription="Изображение рецепта" />
+
+            <!-- Кнопка избранного (поверх изображения) -->
+            <com.google.android.material.checkbox.MaterialCheckBox
+                android:id="@+id/favorite_button"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="9dp"
+                android:elevation="8dp"
+                android:button="@drawable/favorite_selector"
+                app:useMaterialThemeColors="false"
+                android:theme="@style/FavoriteButtonStyle"
+                app:buttonTintMode="src_in"
+                android:scaleX="1.2"
+                android:scaleY="1.2" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/recipe_title"
@@ -31,7 +55,10 @@
             android:textAppearance="@style/TextAppearance.App.TitleMedium"
             android:maxLines="2"
             android:ellipsize="end"
-            tools:text="Название рецепта"/>
+            tools:text="Название рецепта"
+            app:layout_constraintTop_toBottomOf="@+id/image_container"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
         <!-- Дополнительная информация, если необходима -->
         <LinearLayout
@@ -43,5 +70,5 @@
             <!-- Место для дополнительной информации, например, время приготовления или сложность -->
 
         </LinearLayout>
-    </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView> 

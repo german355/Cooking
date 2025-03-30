@@ -115,4 +115,11 @@ public class MainActivity extends AppCompatActivity {
             ((FavoritesFragment) currentFragment).performSearch(query);
         }
     }
+
+    /**
+     * Метод для программного переключения на домашний фрагмент с рецептами
+     */
+    public void navigateToHomeFragment() {
+        bottomNavigationView.setSelectedItemId(R.id.nav_home);
+    }
 }

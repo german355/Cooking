@@ -54,4 +54,12 @@
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">16dp</item>
     </style>
+    
+    <!-- Специальный стиль для кнопки избранного (сердечко) -->
+    <style name="FavoriteButtonStyle">
+        <item name="colorControlNormal">#000000</item>
+        <item name="colorControlActivated">#FF0031</item>
+        <item name="android:colorControlActivated">#FF0031</item>
+        <item name="android:colorControlNormal">#000000</item>
+    </style>
 </resources> 

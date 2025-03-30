@@ -22,24 +22,40 @@ import android.widget.Toast;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
 import com.example.cooking.ServerWorker.AddRecipeActivity;
+import com.example.cooking.ServerWorker.LikedRecipesRepository;
 import com.example.cooking.ServerWorker.RecipeRepository;
 import com.example.cooking.ServerWorker.RecipeSearchService;
 
 import android.widget.SearchView;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.RequestBody;
+import org.json.JSONObject;
+import okhttp3.Request;
 
 /**
  * Фрагмент главного экрана.
  * Отображает сетку рецептов в виде карточек.
  */
-public class HomeFragment extends Fragment implements RecipeRepository.RecipesCallback {
+public class HomeFragment extends Fragment implements RecipeRepository.RecipesCallback, RecipeAdapter.OnRecipeLikeListener {
     private static final String TAG = "HomeFragment";
     
     private RecyclerView recyclerView;
     private RecipeAdapter adapter;
     private RecipeRepository repository;
+    private LikedRecipesRepository likedRecipesRepository;
     private SwipeRefreshLayout swipeRefreshLayout;
     private ProgressBar progressBar;
     private TextView emptyView;
+    private MySharedPreferences preferences;
+    private String userId;
+    
+    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    private OkHttpClient client = new OkHttpClient();
 
     /**
      * Создает и настраивает представление фрагмента.
@@ -48,6 +64,10 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_home, container, false);
+        
+        // Получаем ID пользователя
+        preferences = new MySharedPreferences(requireContext());
+        userId = preferences.getString("userId", "0");
         
         // Инициализация views
         recyclerView = view.findViewById(R.id.recycler_view);
@@ -78,12 +98,13 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         // Создаем пустой список рецептов
         List<Recipe> recipes = new ArrayList<>();
         
-        // Инициализируем адаптер
-        adapter = new RecipeAdapter(recipes);
+        // Инициализируем адаптер с обработчиком лайков
+        adapter = new RecipeAdapter(recipes, this);
         recyclerView.setAdapter(adapter);
         
-        // Инициализируем репозиторий
+        // Инициализируем репозитории
         repository = new RecipeRepository(requireContext());
+        likedRecipesRepository = new LikedRecipesRepository(requireContext());
         
         // Настраиваем swipe-to-refresh
         swipeRefreshLayout.setOnRefreshListener(this::loadRecipes);
@@ -95,12 +116,140 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     }
     
     /**
-     * Загружает рецепты из репозитория.
+     * Загружает рецепты из репозитория и отмечает избранные
      */
     private void loadRecipes() {
         Log.d(TAG, "Начинаем загрузку рецептов");
         showLoading(true);
-        repository.getRecipes(this);
+        
+        // Загружаем избранные рецепты
+        likedRecipesRepository.getLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
+            @Override
+            public void onRecipesLoaded(List<Recipe> likedRecipes) {
+                // Создаем список ID избранных рецептов
+                final List<Integer> likedIds = new ArrayList<>();
+                for (Recipe recipe : likedRecipes) {
+                    likedIds.add(recipe.getId());
+                }
+                
+                // Теперь загружаем все рецепты и отмечаем избранные
+                repository.getRecipes(new RecipeRepository.RecipesCallback() {
+                    @Override
+                    public void onRecipesLoaded(List<Recipe> allRecipes) {
+                        // Отмечаем избранные рецепты
+                        for (Recipe recipe : allRecipes) {
+                            if (likedIds.contains(recipe.getId())) {
+                                recipe.setLiked(true);
+                            }
+                        }
+                        
+                        // Обновляем UI с полным списком рецептов
+                        HomeFragment.this.onRecipesLoaded(allRecipes);
+                    }
+                    
+                    @Override
+                    public void onDataNotAvailable(String error) {
+                        HomeFragment.this.onDataNotAvailable(error);
+                    }
+                });
+            }
+            
+            @Override
+            public void onDataNotAvailable(String error) {
+                // Если не удалось загрузить избранные, просто загружаем все рецепты
+                Log.e(TAG, "Ошибка загрузки избранных: " + error);
+                repository.getRecipes(HomeFragment.this);
+            }
+        });
+    }
+    
+    /**
+     * Обработка нажатия на кнопку лайка
+     */
+    @Override
+    public void onRecipeLike(Recipe recipe, boolean isLiked) {
+        // Проверяем, авторизован ли пользователь
+        if (userId.equals("0")) {
+            Toast.makeText(requireContext(), "Вы должны войти в систему, чтобы добавлять рецепты в избранное", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        try {
+            // Создаем JSON для запроса
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("userId", userId);
+            jsonObject.put("recipeId", recipe.getId());
+            
+            // Отправляем запрос на сервер
+            toggleLikeOnServer(jsonObject.toString(), recipe, isLiked);
+        } catch (Exception e) {
+            Log.e(TAG, "Ошибка при создании JSON для запроса лайка", e);
+            Toast.makeText(requireContext(), "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * Отправляет запрос на сервер для добавления/удаления лайка
+     */
+    private void toggleLikeOnServer(String jsonBody, Recipe recipe, boolean isLiked) {
+        showLoading(true);
+        
+        try {
+            // Создаем тело запроса
+            RequestBody body = RequestBody.create(jsonBody, JSON);
+            
+            // Создаем запрос к API
+            Request request = new Request.Builder()
+                    .url(API_URL + "/like")
+                    .post(body)
+                    .build();
+            
+            // Выполняем запрос асинхронно
+            client.newCall(request).enqueue(new okhttp3.Callback() {
+                @Override
+                public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                    requireActivity().runOnUiThread(() -> {
+                        showLoading(false);
+                        Toast.makeText(requireContext(), 
+                                "Ошибка сети: " + e.getMessage(), 
+                                Toast.LENGTH_SHORT).show();
+                        Log.e(TAG, e.getMessage());
+                        // Возвращаем состояние кнопки
+                        recipe.setLiked(!isLiked);
+                        adapter.notifyDataSetChanged();
+                    });
+                }
+                
+                @Override
+                public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
+                    final boolean success = response.isSuccessful();
+                    requireActivity().runOnUiThread(() -> {
+                        showLoading(false);
+                        if (success) {
+                            // Сообщение в зависимости от статуса лайка
+                            String message = isLiked ? 
+                                    "Рецепт добавлен в избранное" : 
+                                    "Рецепт удален из избранного";
+                            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+                        } else {
+                            // Если ошибка, возвращаем состояние кнопки
+                            recipe.setLiked(!isLiked);
+                            adapter.notifyDataSetChanged();
+                            Toast.makeText(requireContext(), 
+                                    "Ошибка сервера: " + response.code(), 
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                }
+            });
+        } catch (Exception e) {
+            showLoading(false);
+            Log.e(TAG, "Ошибка при отправке запроса лайка", e);
+            Toast.makeText(requireContext(), "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            // Возвращаем состояние кнопки
+            recipe.setLiked(!isLiked);
+            adapter.notifyDataSetChanged();
+        }
     }
     
     /**

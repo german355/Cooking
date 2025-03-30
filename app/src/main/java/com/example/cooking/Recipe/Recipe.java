@@ -14,6 +14,7 @@ public class Recipe {
     private String instructions;
     private String created_at;
     private String userId;
+    private boolean isLiked;
     
     @SerializedName("photo")
     private String photo_url;
@@ -32,6 +33,14 @@ public class Recipe {
 
     public void setUserId(String userId) {
         this.userId = userId;
+    }
+    
+    public boolean isLiked() {
+        return isLiked;
+    }
+    
+    public void setLiked(boolean liked) {
+        isLiked = liked;
     }
 
     // Конструктор по умолчанию

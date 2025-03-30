@@ -194,39 +194,36 @@ public class StartActivity extends AppCompatActivity {
             // Получаем данные пользователя из Firebase
             String email = user.getEmail();
             String firebaseId = user.getUid();
-            Log.d("UId", user.getUid());
-            String displayName = user.getDisplayName() != null ? user.getDisplayName() : user.getEmail();
+            Log.d(TAG, "Firebase пользователь: " + email + ", UID: " + firebaseId);
             
             // Создаем экземпляр нового сервиса
             UserService userService = new UserService();
             
-            // Выполняем вход на сервере
+            // Выполняем ТОЛЬКО вход на сервере (без автоматической регистрации)
             userService.loginFirebaseUser(email, firebaseId, new UserService.UserCallback() {
                 @Override
                 public void onSuccess(ApiResponse response) {
-                    // Вход на сервере успешен, сохраняем данные
+                    // Вход на сервере успешен, сохраняем данные и перенаправляем пользователя
                     saveUserDataAndRedirect(user, response);
                 }
                 
                 @Override
                 public void onFailure(String errorMessage) {
-                    // Вход на сервере не удался, пробуем зарегистрироваться
-                    Log.w(TAG, "Server login failed: " + errorMessage + ". Trying to register...");
+                    // Вход на сервере не удался
+                    Log.e(TAG, "Ошибка входа на сервер: " + errorMessage);
                     
-                    userService.registerFirebaseUser(email, displayName, firebaseId, new UserService.UserCallback() {
-                        @Override
-                        public void onSuccess(ApiResponse response) {
-                            // Регистрация на сервере успешна, сохраняем данные
-                            saveUserDataAndRedirect(user, response);
-                        }
+                    // Выход из Firebase, так как авторизация на сервере не удалась
+                    firebaseAuthManager.signOut();
+                    
+                    runOnUiThread(() -> {
+                        Toast.makeText(StartActivity.this, 
+                            "Ошибка входа на сервер: " + errorMessage, 
+                            Toast.LENGTH_LONG).show();
                         
-                        @Override
-                        public void onFailure(String registerErrorMessage) {
-                            // Ни вход, ни регистрация не удались
-                            Log.e(TAG, "Server registration failed: " + registerErrorMessage);
-                            
-                            // Даже если синхронизация с сервером не удалась, можем использовать Firebase
-                            redirectToMainScreenWithFirebaseOnly(user);
+                        // Восстанавливаем кнопку входа, если пользователь использовал её
+                        if (firebaseLoginButton != null) {
+                            firebaseLoginButton.setEnabled(true);
+                            firebaseLoginButton.setText("Войти");
                         }
                     });
                 }
@@ -249,29 +246,6 @@ public class StartActivity extends AppCompatActivity {
         
         runOnUiThread(() -> {
             Toast.makeText(this, "Вход выполнен успешно!", Toast.LENGTH_SHORT).show();
-            
-            // Переходим на главный экран
-            Intent intent = new Intent(StartActivity.this, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-        });
-    }
-    
-    /**
-     * Перенаправляет на главный экран с данными только из Firebase
-     */
-    private void redirectToMainScreenWithFirebaseOnly(FirebaseUser user) {
-        // Сохраняем информацию о пользователе
-        id = new MySharedPreferences(this);
-        id.putString("userId", user.getUid());
-        id.putString("userName", user.getDisplayName() != null ? user.getDisplayName() : user.getEmail());
-        id.putBoolean("auth", true);
-        id.putInt("permission", 1); // Устанавливаем базовый уровень разрешений
-        id.putBoolean("isFirebaseUser", true);
-        
-        runOnUiThread(() -> {
-            Toast.makeText(this, "Вход выполнен успешно (только Firebase)!", Toast.LENGTH_SHORT).show();
             
             // Переходим на главный экран
             Intent intent = new Intent(StartActivity.this, MainActivity.class);

@@ -350,7 +350,7 @@ public class Regist extends AppCompatActivity {
         // Получаем email и UID пользователя из Firebase
         String email = user.getEmail();
         String firebaseId = user.getUid();
-        Log.d("UID", firebaseId);
+        Log.d(TAG, "Firebase пользователь: " + email + ", UID: " + firebaseId);
         
         // Создаем экземпляр нового сервиса
         UserService userService = new UserService();
@@ -359,36 +359,28 @@ public class Regist extends AppCompatActivity {
         userService.registerFirebaseUser(email, displayName, firebaseId, new UserService.UserCallback() {
             @Override
             public void onSuccess(ApiResponse response) {
-                // Сохраняем данные пользователя
+                // Регистрация на сервере успешна, сохраняем данные и перенаправляем пользователя
                 saveUserDataAndRedirect(user, displayName, response);
             }
             
             @Override
             public void onFailure(String errorMessage) {
-                // В случае неудачи при регистрации на сервере, пробуем выполнить вход
-                Log.w(TAG, "Server registration failed: " + errorMessage + ". Trying to login...");
-                userService.loginFirebaseUser(email, firebaseId, new UserService.UserCallback() {
-                    @Override
-                    public void onSuccess(ApiResponse response) {
-                        // Пользователь уже существует на сервере, просто входим
-                        saveUserDataAndRedirect(user, displayName, response);
+                // Регистрация на сервере не удалась
+                Log.e(TAG, "Ошибка регистрации на сервере: " + errorMessage);
+                
+                // Выход из Firebase, так как регистрация на сервере не удалась
+                firebaseAuthManager.signOut();
+                
+                runOnUiThread(() -> {
+                    // Восстанавливаем кнопки регистрации
+                    if (firebaseRegist != null) {
+                        firebaseRegist.setEnabled(true);
+                        firebaseRegist.setText("Зарегистрироваться");
                     }
                     
-                    @Override
-                    public void onFailure(String loginErrorMessage) {
-                        // Ни регистрация, ни вход не удались
-                        runOnUiThread(() -> {
-                            firebaseRegist.setEnabled(true);
-                            firebaseRegist.setText("Зарегистрироваться через Firebase");
-                            Toast.makeText(Regist.this, 
-                                "Регистрация в Firebase успешна, но возникла ошибка при синхронизации с сервером: " + 
-                                loginErrorMessage, Toast.LENGTH_LONG).show();
-                            
-                            // Даже если регистрация на сервере не удалась, мы все равно можем использовать Firebase
-                            // Переходим на главный экран
-                            redirectToMainScreenWithFirebaseOnly(user, displayName);
-                        });
-                    }
+                    Toast.makeText(Regist.this, 
+                        "Регистрация в Firebase успешна, но не удалось зарегистрироваться на сервере: " + 
+                        errorMessage, Toast.LENGTH_LONG).show();
                 });
             }
         });
@@ -420,24 +412,5 @@ public class Regist extends AppCompatActivity {
             startActivity(intent);
             finish();
         });
-    }
-    
-    /**
-     * Перенаправляет на главный экран с данными только из Firebase
-     */
-    private void redirectToMainScreenWithFirebaseOnly(FirebaseUser user, String displayName) {
-        // Сохраняем данные пользователя только из Firebase
-        MySharedPreferences prefs = new MySharedPreferences(this);
-        prefs.putString("userId", user.getUid());
-        prefs.putString("userName", displayName != null ? displayName : user.getEmail());
-        prefs.putBoolean("auth", true);
-        prefs.putInt("permission", 1); // Базовые права доступа
-        prefs.putBoolean("isFirebaseUser", true);
-        
-        // Переходим на главный экран
-        Intent intent = new Intent(Regist.this, MainActivity.class);
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        startActivity(intent);
-        finish();
     }
 }

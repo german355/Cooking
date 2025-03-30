@@ -1,5 +1,7 @@
 package com.example.cooking;
 
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -17,15 +19,21 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
 import com.example.cooking.ServerWorker.LikedRecipesRepository;
+import com.example.cooking.fragments.EmptyFavoritesFragment;
 import com.google.android.material.progressindicator.CircularProgressIndicator;
 
 import java.util.ArrayList;
 import java.util.List;
+import okhttp3.OkHttpClient;
+import okhttp3.MediaType;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import org.json.JSONObject;
 
 /**
  * Фрагмент для отображения избранных (лайкнутых) рецептов пользователя.
  */
-public class FavoritesFragment extends Fragment {
+public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecipeLikeListener {
     private static final String TAG = "FavoritesFragment";
     
     private LikedRecipesRepository likedRecipesRepository;
@@ -38,6 +46,10 @@ public class FavoritesFragment extends Fragment {
     
     private String userId;
     private List<Recipe> allLikedRecipes = new ArrayList<>();
+    
+    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    private OkHttpClient client = new OkHttpClient();
     
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -56,7 +68,7 @@ public class FavoritesFragment extends Fragment {
         List<Recipe> recipes = new ArrayList<>();
         
         // Инициализация адаптера и настройка RecyclerView
-        adapter = new RecipeAdapter(recipes);
+        adapter = new RecipeAdapter(recipes, this);
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2));
         
@@ -84,7 +96,7 @@ public class FavoritesFragment extends Fragment {
         });
         
         // Настройка SwipeRefreshLayout для обновления данных
-        //swipeRefreshLayout.setOnRefreshListener(this::refreshLikedRecipes);
+        swipeRefreshLayout.setOnRefreshListener(this::refreshLikedRecipes);
         
         // Инициализация репозитория
         likedRecipesRepository = new LikedRecipesRepository(requireContext());
@@ -109,6 +121,11 @@ public class FavoritesFragment extends Fragment {
                 // Сохраняем полный список рецептов
                 allLikedRecipes = new ArrayList<>(recipes);
                 
+                // Устанавливаем флаг liked для всех рецептов в списке лайкнутых
+                for (Recipe recipe : allLikedRecipes) {
+                    recipe.setLiked(true);
+                }
+                
                 // Обновляем UI
                 updateRecipesList(recipes);
                 
@@ -128,16 +145,21 @@ public class FavoritesFragment extends Fragment {
     /**
      * Обновляет лайкнутые рецепты с сервера
      */
-    /*private void refreshLikedRecipes() {
+    private void refreshLikedRecipes() {
         swipeRefreshLayout.setRefreshing(true);
         
-        likedRecipesRepository.refreshLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
+        likedRecipesRepository.getLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
             @Override
             public void onRecipesLoaded(List<Recipe> recipes) {
                 swipeRefreshLayout.setRefreshing(false);
                 
                 // Сохраняем полный список рецептов
                 allLikedRecipes = new ArrayList<>(recipes);
+                
+                // Устанавливаем флаг liked для всех рецептов в списке лайкнутых
+                for (Recipe recipe : allLikedRecipes) {
+                    recipe.setLiked(true);
+                }
                 
                 // Обновляем UI
                 updateRecipesList(recipes);
@@ -154,7 +176,7 @@ public class FavoritesFragment extends Fragment {
                 Log.e(TAG, "Ошибка при обновлении лайкнутых рецептов: " + error);
             }
         });
-    }*/
+    }
     
     /**
      * Выполняет поиск рецептов по заданному запросу среди лайкнутых рецептов
@@ -196,43 +218,175 @@ public class FavoritesFragment extends Fragment {
      */
     private void updateRecipesList(List<Recipe> recipes) {
         if (recipes.isEmpty()) {
-            showEmptyView();
+            showEmptyFavoritesFragment();
         } else {
             hideEmptyView();
             adapter.updateRecipes(recipes);
         }
     }
     
-    private void showEmptyView() {
-        emptyView.setVisibility(View.VISIBLE);
+    /**
+     * Показывает фрагмент пустого состояния избранного
+     */
+    private void showEmptyFavoritesFragment() {
+        // Скрываем основной контент
         recyclerView.setVisibility(View.GONE);
+        emptyView.setVisibility(View.GONE);
+        
+        // Находим и делаем видимым контейнер для пустого состояния
+        View emptyContainer = getView().findViewById(R.id.empty_container_favorites);
+        if (emptyContainer != null) {
+            emptyContainer.setVisibility(View.VISIBLE);
+            
+            // Показываем фрагмент с пустым состоянием
+            getChildFragmentManager().beginTransaction()
+                    .replace(R.id.empty_container_favorites, new EmptyFavoritesFragment())
+                    .commit();
+        } else {
+            // Если контейнер не найден, используем стандартное пустое представление
+            emptyView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void showEmptyView() {
+        // Если у нас есть контейнер для пустого состояния, используем EmptyFavoritesFragment
+        if (getView() != null && getView().findViewById(R.id.empty_container_favorites) != null) {
+            showEmptyFavoritesFragment();
+        } else {
+            // Иначе показываем базовое пустое состояние
+            emptyView.setVisibility(View.VISIBLE);
+            recyclerView.setVisibility(View.GONE);
+        }
     }
     
     private void hideEmptyView() {
         emptyView.setVisibility(View.GONE);
         recyclerView.setVisibility(View.VISIBLE);
+        
+        // Удаляем EmptyFavoritesFragment если он показан
+        Fragment emptyFragment = getChildFragmentManager().findFragmentById(R.id.empty_container_favorites);
+        if (emptyFragment != null) {
+            getChildFragmentManager().beginTransaction()
+                    .remove(emptyFragment)
+                    .commit();
+        }
+        
+        // Скрываем контейнер
+        if (getView() != null) {
+            View emptyContainer = getView().findViewById(R.id.empty_container_favorites);
+            if (emptyContainer != null) {
+                emptyContainer.setVisibility(View.GONE);
+            }
+        }
     }
     
+    /**
+     * Показывает индикатор загрузки
+     */
     private void showLoading() {
         progressIndicator.setVisibility(View.VISIBLE);
         recyclerView.setVisibility(View.GONE);
         emptyView.setVisibility(View.GONE);
     }
     
+    /**
+     * Скрывает индикатор загрузки
+     */
     private void hideLoading() {
         progressIndicator.setVisibility(View.GONE);
+        recyclerView.setVisibility(View.VISIBLE);
     }
     
+    /**
+     * Показывает сообщение об ошибке
+     */
     private void showError(String message) {
-        Toast.makeText(getContext(),"Ошибка сети", Toast.LENGTH_SHORT).show();
-        emptyView.setText("Нет лайкнутых рецептов\n" + message);
-        showEmptyView();
+        if (getContext() != null) {
+            Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
+        }
     }
     
     @Override
     public void onResume() {
         super.onResume();
-        // Обновляем данные при возвращении к фрагменту
+        // Обновляем список при возвращении на экран
         loadLikedRecipes();
+    }
+
+    /**
+     * Обработка нажатия на кнопку лайка
+     */
+    @Override
+    public void onRecipeLike(Recipe recipe, boolean isLiked) {
+        Log.d(TAG, "Изменение лайка рецепта id:" + recipe.getId() + " на " + isLiked);
+        
+        if (!isLiked) {
+            // Если рецепт был удален из избранного, удаляем его из списка
+            allLikedRecipes.remove(recipe);
+            
+            // Обновляем RecyclerView
+            List<Recipe> currentRecipes = new ArrayList<>(allLikedRecipes);
+            updateRecipesList(currentRecipes);
+            
+            // Отправляем запрос на сервер
+            toggleLikeOnServer(recipe, false);
+            
+            if (currentRecipes.isEmpty()) {
+                showEmptyFavoritesFragment();
+            }
+        } else {
+            // Если рецепт добавлен в избранное (что странно в данном фрагменте),
+            // просто обновляем состояние на сервере
+            toggleLikeOnServer(recipe, true);
+        }
+    }
+    
+    /**
+     * Отправляет запрос на сервер для изменения статуса "лайк"
+     */
+    private void toggleLikeOnServer(Recipe recipe, boolean isLiked) {
+        try {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("recipe_id", recipe.getId());
+            jsonObject.put("user_id", userId);
+            
+            String jsonBody = jsonObject.toString();
+            Log.d(TAG, "Отправка запроса лайка: " + jsonBody);
+            
+            RequestBody body = RequestBody.create(jsonBody, JSON);
+            
+            Request request = new Request.Builder()
+                    .url(API_URL + "/like")
+                    .post(body)
+                    .build();
+            
+            client.newCall(request).enqueue(new okhttp3.Callback() {
+                @Override
+                public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                    Log.e(TAG, "Ошибка сети при изменении лайка", e);
+                    if (getActivity() != null) {
+                        getActivity().runOnUiThread(() -> {
+                            Toast.makeText(getContext(), "Ошибка сети: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        });
+                    }
+                }
+                
+                @Override
+                public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
+                    if (response.isSuccessful()) {
+                        Log.d(TAG, "Успешный ответ от сервера на изменение лайка");
+                    } else {
+                        Log.e(TAG, "Ошибка сервера при изменении лайка: " + response.code());
+                        if (getActivity() != null) {
+                            getActivity().runOnUiThread(() -> {
+                                Toast.makeText(getContext(), "Ошибка сервера: " + response.code(), Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    }
+                }
+            });
+        } catch (Exception e) {
+            Log.e(TAG, "Ошибка при создании запроса на изменение лайка", e);
+        }
     }
 } 
