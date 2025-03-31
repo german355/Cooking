@@ -1,5 +1,7 @@
 package com.example.cooking.fragments;
 
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -19,6 +21,7 @@ import com.example.cooking.R;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.RecipeAdapter;
 import com.example.cooking.ServerWorker.LikedRecipesRepository;
+import com.example.cooking.fragments.EmptyFavoritesFragment;
 import com.google.android.material.progressindicator.CircularProgressIndicator;
 
 import java.util.ArrayList;
@@ -267,6 +270,14 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
             View emptyContainer = rootView.findViewById(R.id.empty_container_favorites);
             if (emptyContainer != null) {
                 emptyContainer.setVisibility(View.VISIBLE);
+                
+                // Показываем фрагмент с пустым состоянием
+                getChildFragmentManager().beginTransaction()
+                        .replace(R.id.empty_container_favorites, new EmptyFavoritesFragment())
+                        .commit();
+            } else {
+                // Если контейнер не найден, используем стандартное пустое представление
+                emptyView.setVisibility(View.VISIBLE);
             }
         } else {
             Log.w(TAG, "Не удалось показать пустой фрагмент: View == null");
@@ -282,6 +293,14 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
             View emptyContainer = rootView.findViewById(R.id.empty_container_favorites);
             if (emptyContainer != null) {
                 emptyContainer.setVisibility(View.GONE);
+                
+                // Удаляем EmptyFavoritesFragment если он показан
+                Fragment emptyFragment = getChildFragmentManager().findFragmentById(R.id.empty_container_favorites);
+                if (emptyFragment != null) {
+                    getChildFragmentManager().beginTransaction()
+                        .remove(emptyFragment)
+                        .commit();
+                }
             }
             emptyView.setVisibility(View.GONE); // Убеждаемся, что сообщение об ошибке скрыто
             recyclerView.setVisibility(View.VISIBLE); // Показываем RecyclerView
