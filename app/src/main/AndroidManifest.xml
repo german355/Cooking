@@ -49,6 +49,10 @@
             android:name=".ServerWorker.AddRecipeActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
+        <activity
+            android:name=".ServerWorker.EditRecipeActivity"
+            android:exported="false"
+            android:parentActivityName=".Recipe.RecipeDetailActivity" />
     </application>
 
 </manifest>

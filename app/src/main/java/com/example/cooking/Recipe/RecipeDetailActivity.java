@@ -2,11 +2,16 @@ package com.example.cooking.Recipe;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
@@ -15,6 +20,7 @@ import com.bumptech.glide.load.resource.bitmap.RoundedCorners;
 import com.bumptech.glide.request.RequestOptions;
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
+import com.example.cooking.ServerWorker.EditRecipeActivity;
 import com.example.cooking.ServerWorker.RecipeDeleter;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.imageview.ShapeableImageView;
@@ -24,6 +30,8 @@ import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Активность для отображения подробной информации о рецепте.
@@ -58,7 +66,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         // Получаем данные о рецепте из Intent
-        int  recipeId = getIntent().getIntExtra("recipe_id", -1);
+        int recipeId = getIntent().getIntExtra("recipe_id", -1);
         String title = getIntent().getStringExtra("recipe_title");
         String ingredients = getIntent().getStringExtra("recipe_ingredients");
         String instructions = getIntent().getStringExtra("recipe_instructions");
@@ -116,7 +124,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
             });
         });
 
-        final int finalRecipeId = recipeId;
+        // Настраиваем обработчик нажатия на кнопку лайка
         fabLike.setOnClickListener(view -> {
             // Переключаем визуальное состояние лайка
             isLiked = !isLiked;
@@ -127,7 +135,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
                 // Создаем JSON для запроса
                 JSONObject jsonObject = new JSONObject();
                 jsonObject.put("userId", currentUserId);
-                jsonObject.put("recipeId", finalRecipeId);
+                jsonObject.put("recipeId", recipeId);
                 
                 // Создаем тело запроса
                 RequestBody body = RequestBody.create(jsonObject.toString(), MediaType.parse("application/json; charset=utf-8"));
@@ -138,52 +146,16 @@ public class RecipeDetailActivity extends AppCompatActivity {
                         .post(body)
                         .build();
                 
-                // Создаем OkHttpClient
-                OkHttpClient client = new OkHttpClient();
+                // Создаем OkHttpClient с увеличенными таймаутами
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .connectTimeout(30, TimeUnit.SECONDS) // 30 секунд на подключение
+                        .readTimeout(30, TimeUnit.SECONDS) // 30 секунд на чтение
+                        .writeTimeout(30, TimeUnit.SECONDS) // 30 секунд на запись
+                        .retryOnConnectionFailure(true) // Автоматически повторять при ошибках соединения
+                        .build();
                 
-                // Выполняем запрос асинхронно
-                client.newCall(request).enqueue(new okhttp3.Callback() {
-                    @Override
-                    public void onFailure(okhttp3.Call call, java.io.IOException e) {
-                        runOnUiThread(() -> {
-                            Toast.makeText(RecipeDetailActivity.this, 
-                                    "Ошибка сети: " + e.getMessage(), 
-                                    Toast.LENGTH_SHORT).show();
-                            Log.e(TAG, "Ошибка сети при лайке", e);
-                            // Откатываем состояние если ошибка
-                            isLiked = !isLiked;
-                            updateLikeButtonState();
-                        });
-                    }
-                    
-                    @Override
-                    public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
-                        final boolean success = response.isSuccessful();
-                        runOnUiThread(() -> {
-                            if (success) {
-                                Toast.makeText(RecipeDetailActivity.this, 
-                                        "Статус лайка изменен", 
-                                        Toast.LENGTH_SHORT).show();
-                                Log.d(TAG, "Лайк успешно изменен");
-                                
-                                // Установка результата для возврата в HomeFragment
-                                Intent resultIntent = new Intent();
-                                resultIntent.putExtra("recipe_id", finalRecipeId);
-                                resultIntent.putExtra("isLiked", isLiked);
-                                setResult(RESULT_OK, resultIntent);
-                            } else {
-                                Toast.makeText(RecipeDetailActivity.this, 
-                                        "Ошибка сервера: " + response.code(), 
-                                        Toast.LENGTH_SHORT).show();
-                                Log.e(TAG, "Ошибка сервера при лайке: " + response.code());
-                                
-                                // Откатываем состояние лайка, если произошла ошибка
-                                isLiked = !isLiked;
-                                updateLikeButtonState();
-                            }
-                        });
-                    }
-                });
+                // Выполняем запрос асинхронно с повторными попытками
+                executeWithRetry(client, request, 0, 3);
             } catch (Exception e) {
                 Log.e(TAG, "Ошибка при создании запроса лайка", e);
                 Toast.makeText(this, "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -222,6 +194,84 @@ public class RecipeDetailActivity extends AppCompatActivity {
     }
     
     /**
+     * Выполняет запрос с повторными попытками при ошибках
+     */
+    private void executeWithRetry(OkHttpClient client, Request request, int retryCount, int maxRetries) {
+        // Получаем recipeId из текущего Intent для использования в методе
+        final int recipeId = getIntent().getIntExtra("recipe_id", -1);
+        
+        client.newCall(request).enqueue(new okhttp3.Callback() {
+            @Override
+            public void onFailure(okhttp3.Call call, java.io.IOException e) {
+                Log.e(TAG, "Ошибка сети при попытке #" + (retryCount + 1), e);
+                
+                if (retryCount < maxRetries) {
+                    // Делаем паузу перед повторной попыткой
+                    try {
+                        Thread.sleep(1000 * (retryCount + 1));
+                    } catch (InterruptedException ie) {
+                        Log.e(TAG, "Прерывание ожидания", ie);
+                    }
+                    
+                    // Повторяем запрос
+                    runOnUiThread(() -> {
+                        Log.d(TAG, "Повторная попытка запроса #" + (retryCount + 1));
+                        executeWithRetry(client, request, retryCount + 1, maxRetries);
+                    });
+                } else {
+                    // Все попытки исчерпаны
+                    runOnUiThread(() -> {
+                        Toast.makeText(RecipeDetailActivity.this, 
+                                "Ошибка сети: " + e.getMessage(), 
+                                Toast.LENGTH_SHORT).show();
+                        Log.e(TAG, "Ошибка сети при лайке после " + maxRetries + " попыток", e);
+                        // Откатываем состояние если ошибка
+                        isLiked = !isLiked;
+                        updateLikeButtonState();
+                    });
+                }
+            }
+            
+            @Override
+            public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
+                final boolean success = response.isSuccessful();
+                runOnUiThread(() -> {
+                    if (success) {
+                        Toast.makeText(RecipeDetailActivity.this, 
+                                "Статус лайка изменен", 
+                                Toast.LENGTH_SHORT).show();
+                        Log.d(TAG, "Лайк успешно изменен");
+                        
+                        // Установка результата для возврата в HomeFragment
+                        Intent resultIntent = new Intent();
+                        resultIntent.putExtra("recipe_id", recipeId);
+                        resultIntent.putExtra("isLiked", isLiked);
+                        setResult(RESULT_OK, resultIntent);
+                    } else {
+                        if (retryCount < maxRetries && (response.code() >= 500 || response.code() == 429)) {
+                            // Повторяем попытку для серверных ошибок
+                            Log.d(TAG, "Повторная попытка #" + (retryCount + 1) + " после HTTP ошибки " + response.code());
+                            // Делаем паузу перед повторной попыткой
+                            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                                executeWithRetry(client, request, retryCount + 1, maxRetries);
+                            }, 1000 * (retryCount + 1));
+                        } else {
+                            Toast.makeText(RecipeDetailActivity.this, 
+                                    "Ошибка сервера: " + response.code(), 
+                                    Toast.LENGTH_SHORT).show();
+                            Log.e(TAG, "Ошибка сервера при лайке: " + response.code());
+                            
+                            // Откатываем состояние лайка, если произошла ошибка
+                            isLiked = !isLiked;
+                            updateLikeButtonState();
+                        }
+                    }
+                });
+            }
+        });
+    }
+    
+    /**
      * Обновляет состояние кнопки лайка в зависимости от текущего значения isLiked
      */
     private void updateLikeButtonState() {
@@ -229,6 +279,140 @@ public class RecipeDetailActivity extends AppCompatActivity {
             fabLike.setImageResource(R.drawable.ic_favorite);
         } else {
             fabLike.setImageResource(R.drawable.ic_favorite_border);
+        }
+    }
+    
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        getMenuInflater().inflate(R.menu.menu_recipe_detail, menu);
+        return true;
+    }
+    
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        int id = item.getItemId();
+        
+        if (id == android.R.id.home) {
+            onBackPressed();
+            return true;
+        } else if (id == R.id.action_edit) {
+            // Обработка нажатия на "Редактировать"
+            Log.d(TAG, "onOptionsItemSelected: Нажата кнопка 'Редактировать'");
+            
+            // Получаем данные о рецепте из Intent
+            int recipeId = getIntent().getIntExtra("recipe_id", -1);
+            String title = getIntent().getStringExtra("recipe_title");
+            String ingredients = getIntent().getStringExtra("recipe_ingredients");
+            String instructions = getIntent().getStringExtra("recipe_instructions");
+            String photoUrl = getIntent().getStringExtra("photo_url");
+            
+            // Запускаем активность редактирования рецепта с передачей данных
+            Intent intent = new Intent(this, EditRecipeActivity.class);
+            intent.putExtra("recipe_id", recipeId);
+            intent.putExtra("recipe_title", title);
+            intent.putExtra("recipe_ingredients", ingredients);
+            intent.putExtra("recipe_instructions", instructions);
+            intent.putExtra("photo_url", photoUrl);
+            
+            // Запускаем активность и ожидаем результат
+            startActivityForResult(intent, 200);
+            return true;
+        } else if (id == R.id.action_delete) {
+            // Обработка нажатия на "Удалить"
+            Log.d(TAG, "onOptionsItemSelected: Нажата кнопка 'Удалить'");
+            showDeleteConfirmationDialog();
+            return true;
+        }
+        
+        return super.onOptionsItemSelected(item);
+    }
+    
+    /**
+     * Показывает диалог подтверждения удаления рецепта
+     */
+    private void showDeleteConfirmationDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Удаление рецепта");
+        builder.setMessage("Вы уверены, что хотите удалить этот рецепт?");
+        builder.setPositiveButton("Удалить", (dialog, which) -> {
+            // Получаем данные о рецепте из Intent
+            int recipeId = getIntent().getIntExtra("recipe_id", -1);
+            String userId = getIntent().getStringExtra("userId");
+            
+            // Получаем permission пользователя
+            MySharedPreferences user = new MySharedPreferences(this);
+            int permission = user.getInt("permission", 1);
+            
+            // Используем RecipeDeleter для удаления рецепта
+            RecipeDeleter deleter = new RecipeDeleter(this);
+            deleter.deleteRecipe(recipeId, userId, permission, new RecipeDeleter.DeleteRecipeCallback() {
+                @Override
+                public void onDeleteSuccess() {
+                    Log.d("DeleteRecipe", "Рецепт удалён");
+                    Toast.makeText(RecipeDetailActivity.this, "Рецепт удалён", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
+
+                @Override
+                public void onDeleteFailure(String error) {
+                    // Обработка ошибки удаления рецепта
+                    Log.e("DeleteRecipe", "Ошибка удаления рецепта: " + error);
+                    Toast.makeText(RecipeDetailActivity.this, "Ошибка удаления рецепта: " + error, Toast.LENGTH_LONG).show();
+                }
+            });
+        });
+        builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
+        builder.show();
+    }
+    
+    /**
+     * Обрабатывает результат редактирования рецепта
+     */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        // Обработка результата от EditRecipeActivity
+        if (requestCode == 200 && resultCode == RESULT_OK && data != null) {
+            Log.d(TAG, "onActivityResult: Получен результат от EditRecipeActivity");
+            
+            // Получаем обновленные данные
+            String newTitle = data.getStringExtra("recipe_title");
+            String newIngredients = data.getStringExtra("recipe_ingredients");
+            String newInstructions = data.getStringExtra("recipe_instructions");
+            String photoUrl = data.getStringExtra("photo_url");
+            
+            // Обновляем данные в текущем Intent
+            getIntent().putExtra("recipe_title", newTitle);
+            getIntent().putExtra("recipe_ingredients", newIngredients);
+            getIntent().putExtra("recipe_instructions", newInstructions);
+            
+            // Обновляем заголовок Toolbar
+            if (getSupportActionBar() != null) {
+                getSupportActionBar().setTitle(newTitle);
+            }
+            
+            // Обновляем текстовые поля
+            TextView titleTextView = findViewById(R.id.recipe_title);
+            TextView ingredientsTextView = findViewById(R.id.recipe_ingredients);
+            TextView instructionsTextView = findViewById(R.id.recipe_instructions);
+            
+            titleTextView.setText(newTitle);
+            ingredientsTextView.setText(newIngredients);
+            instructionsTextView.setText(newInstructions);
+            
+            // Обновляем изображение, если изменилось
+            if (photoUrl != null && !photoUrl.isEmpty()) {
+                ShapeableImageView recipeImageView = findViewById(R.id.recipe_image);
+                Glide.with(this)
+                    .load(photoUrl)
+                    .placeholder(R.drawable.white_card_background)
+                    .error(R.drawable.white_card_background)
+                    .centerCrop()
+                    .into(recipeImageView);
+            }
+            
+            Toast.makeText(this, "Рецепт успешно обновлен", Toast.LENGTH_SHORT).show();
         }
     }
 }

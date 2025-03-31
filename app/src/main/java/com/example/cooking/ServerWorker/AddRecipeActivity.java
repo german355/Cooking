@@ -285,23 +285,39 @@ public class AddRecipeActivity extends AppCompatActivity {
         String title = titleEditText.getText().toString().trim();
         String ingredients = ingredientsEditText.getText().toString().trim();
         String instructions = instructionsEditText.getText().toString().trim();
-        String id = user.getString("userId", "99");
+        String userId = user.getString("userId", "99");
 
         Log.d(TAG, "saveRecipe: Получены данные - title: " + title +
                 ", ingredients length: " + ingredients.length() +
                 ", instructions length: " + instructions.length() +
-                ", userId: " + id);
-
-
+                ", userId: " + userId);
 
         // Показываем индикатор загрузки и блокируем кнопку
         progressBar.setVisibility(View.VISIBLE);
         saveButton.setEnabled(false);
         Log.d(TAG, "saveRecipe: Показан индикатор загрузки, кнопка заблокирована");
 
-        // Создаем и выполняем асинхронную задачу для отправки рецепта на сервер
-        Log.d(TAG, "saveRecipe: Запуск асинхронной задачи SaveRecipeTask");
-        new SaveRecipeTask(this, title, ingredients, instructions, id, imageBytes).execute();
+        // Создаем экземпляр RecipeManager и сохраняем рецепт
+        RecipeManager recipeManager = new RecipeManager(this);
+        recipeManager.saveRecipe(title, ingredients, instructions, userId, null, imageBytes, 
+                new RecipeManager.RecipeSaveCallback() {
+            @Override
+            public void onSuccess(String message) {
+                progressBar.setVisibility(View.GONE);
+                saveButton.setEnabled(true);
+                Toast.makeText(AddRecipeActivity.this, message, Toast.LENGTH_LONG).show();
+                Log.d(TAG, "saveRecipe: Успешно - " + message);
+                finish(); // Закрываем активность после успешного добавления
+            }
+
+            @Override
+            public void onFailure(String error) {
+                progressBar.setVisibility(View.GONE);
+                saveButton.setEnabled(true);
+                Toast.makeText(AddRecipeActivity.this, error, Toast.LENGTH_LONG).show();
+                Log.e(TAG, "saveRecipe: Ошибка - " + error);
+            }
+        });
     }
 
     @Override
@@ -319,140 +335,6 @@ public class AddRecipeActivity extends AppCompatActivity {
         ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
         return activeNetworkInfo != null && activeNetworkInfo.isConnected();
-    }
-
-    // Асинхронная задача для отправки рецепта на сервер
-    private static class SaveRecipeTask extends AsyncTask<Void, Void, Boolean> {
-        private final WeakReference<AddRecipeActivity> activityRef;
-        private final String title;
-        private final String ingredients;
-        private final String instructions;
-        private final String userId;
-        private final byte[] imageBytes;
-        private String errorMessage;
-
-        SaveRecipeTask(AddRecipeActivity activity, String title, String ingredients, String instructions, String userId, byte[] imageBytes) {
-            this.activityRef = new WeakReference<>(activity);
-            this.title = title;
-            this.ingredients = ingredients;
-            this.instructions = instructions;
-            this.userId = userId;
-            this.imageBytes = imageBytes;
-
-            Log.d(TAG, "SaveRecipeTask: Создан экземпляр задачи с параметрами - title: " + title +
-                    ", ingredients length: " + ingredients.length() +
-                    ", instructions length: " + instructions.length() +
-                    ", imageBytes: " + (imageBytes != null ? imageBytes.length + " байт" : "нет"));
-        }
-
-        @Override
-        protected void onPreExecute() {
-            super.onPreExecute();
-            Log.d(TAG, "onPreExecute: Начало выполнения асинхронной задачи");
-        }
-
-        @Override
-        protected Boolean doInBackground(Void... voids) {
-            Log.d(TAG, "doInBackground: Выполнение в фоновом потоке");
-            try {
-                MultipartBody.Builder multipartBuilder = new MultipartBody.Builder()
-                        .setType(MultipartBody.FORM)
-                        .addFormDataPart("title", title)
-                        .addFormDataPart("ingredients", ingredients)
-                        .addFormDataPart("instructions", instructions)
-                        .addFormDataPart("userId", userId);
-                
-                // Добавляем изображение к запросу, если оно было выбрано
-                if (imageBytes != null && imageBytes.length > 0) {
-                    String fileName = "recipe_" + System.currentTimeMillis() + ".jpg";
-                    multipartBuilder.addFormDataPart("photo", fileName,
-                            RequestBody.create(MediaType.parse("image/jpeg"), imageBytes));
-                    Log.d(TAG, "doInBackground: Добавлено изображение к запросу, имя файла: " + fileName + ", размер: " + imageBytes.length + " байт");
-                } else {
-                    Log.d(TAG, "doInBackground: Изображение не выбрано или имеет нулевой размер");
-                }
-
-                // Создаем HTTP-клиент и запрос
-                RequestBody body = multipartBuilder.build();
-                String url = API_URL + "/addrecipes";
-                Request request = new Request.Builder()
-                        .url(url)
-                        .post(body)
-                        .header("Connection", "close")
-                        .build();
-                Log.d(TAG, "doInBackground: Подготовлен HTTP запрос к URL: " + url);
-
-                // Выполняем запрос
-                long startTime = System.currentTimeMillis();
-                Response response = httpClient.newCall(request).execute();
-                long endTime = System.currentTimeMillis();
-                Log.d(TAG, "SaveRecipeTask.doInBackground: Ответ получен за " + (endTime - startTime) + " мс, код: " + response.code());
-
-                String responseData = response.body().string();
-                Log.d(TAG, "doInBackground: Тело ответа: " + responseData);
-
-                // Обрабатываем ответ
-                if (response.isSuccessful()) {
-                    JSONObject jsonResponse = new JSONObject(responseData);
-                    boolean success = jsonResponse.optBoolean("success", false);
-                    String message = jsonResponse.optString("message", "");
-                    Log.d(TAG, "doInBackground: Успешный ответ, success = " + success + ", message = " + message);
-                    
-                    // Сохраняем сообщение для отображения пользователю
-                    if (message.length() > 0) {
-                        errorMessage = message; // Используем errorMessage для передачи сообщения, даже если это успех
-                    }
-                    
-                    return success;
-                } else {
-                    errorMessage = "Ошибка сервера: " + response.code();
-                    Log.e(TAG, "doInBackground: " + errorMessage);
-                    return false;
-                }
-            } catch (JSONException e) {
-                Log.e(TAG, "doInBackground: JSON error", e);
-                errorMessage = "Ошибка формата данных";
-                return false;
-            } catch (IOException e) {
-                Log.e(TAG, "doInBackground: Network error", e);
-                errorMessage = "Ошибка сети";
-                return false;
-            } catch (Exception e) {
-                Log.e(TAG, "doInBackground: Unknown error", e);
-                errorMessage = "Неизвестная ошибка";
-                return false;
-            }
-        }
-        
-        @Override
-        protected void onPostExecute(Boolean success) {
-            AddRecipeActivity activity = activityRef.get();
-            if (activity == null || activity.isFinishing()) return;
-
-            Log.d(TAG, "SaveRecipeTask.onPostExecute: Завершение задачи, результат: " + success);
-            activity.progressBar.setVisibility(View.GONE);
-            activity.saveButton.setEnabled(true);
-
-            if (success) {
-                // Очищаем кэш рецептов (если требуется)
-                RecipeRepository repository = new RecipeRepository(activity);
-                repository.clearCache();
-                
-                // Показываем сообщение об успехе, используя message от сервера, если есть
-                String message = errorMessage != null && !errorMessage.isEmpty() 
-                        ? errorMessage 
-                        : "Рецепт успешно сохранен";
-                Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
-                
-                Log.d(TAG, "SaveRecipeTask.onPostExecute: Рецепт сохранен, закрытие Activity");
-                activity.finish();
-            } else {
-                // Показываем сообщение об ошибке
-                String message = errorMessage != null ? errorMessage : "Не удалось сохранить рецепт";
-                Log.e(TAG, "SaveRecipeTask.onPostExecute: Ошибка: " + message);
-                Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
-            }
-        }
     }
 
     private boolean validateTitle(String title) {

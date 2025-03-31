@@ -72,7 +72,11 @@ public class UserService {
         UserLoginRequest request = new UserLoginRequest(email, firebaseId);
         Call<ApiResponse> call = apiService.loginUser(request);
         
-        call.enqueue(new Callback<ApiResponse>() {
+        // Добавляем механизм повторных попыток на случай ошибки "unexpected end of stream"
+        final int[] retryCount = {0};
+        final int maxRetries = 3;
+        
+        Callback<ApiResponse> loginCallback = new Callback<ApiResponse>() {
             @Override
             public void onResponse(Call<ApiResponse> call, Response<ApiResponse> response) {
                 if (response.isSuccessful() && response.body() != null) {
@@ -86,15 +90,48 @@ public class UserService {
                     }
                 } else {
                     Log.e(TAG, "Login error code: " + response.code());
-                    callback.onFailure("Ошибка сервера: " + response.code());
+                    
+                    // Если мы получили ошибку 401, возможно нужно сбросить клиент и повторить попытку
+                    if (response.code() == 401 && retryCount[0] < maxRetries) {
+                        retryCount[0]++;
+                        Log.d(TAG, "Повторная попытка входа после ошибки авторизации: " + retryCount[0]);
+                        RetrofitClient.resetClient();
+                        apiService.loginUser(request).enqueue(this);
+                    } else {
+                        callback.onFailure("Ошибка сервера: " + response.code());
+                    }
                 }
             }
             
             @Override
             public void onFailure(Call<ApiResponse> call, Throwable t) {
                 Log.e(TAG, "Login network error", t);
-                callback.onFailure("Ошибка сети: " + t.getMessage());
+                
+                // Проверяем, является ли ошибка "unexpected end of stream" и повторяем попытку
+                if (t.getMessage() != null && 
+                    (t.getMessage().contains("unexpected end of stream") ||
+                     t.getMessage().contains("timeout") ||
+                     t.getMessage().contains("Connection reset")) && 
+                    retryCount[0] < maxRetries) {
+                    
+                    retryCount[0]++;
+                    Log.d(TAG, "Повторная попытка входа после ошибки сети: " + retryCount[0]);
+                    
+                    // Небольшая задержка перед повторной попыткой
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        Log.e(TAG, "Прервано ожидание перед повторной попыткой", e);
+                    }
+                    
+                    RetrofitClient.resetClient();
+                    apiService.loginUser(request).enqueue(this);
+                } else {
+                    callback.onFailure("Ошибка сети: " + t.getMessage());
+                }
             }
-        });
+        };
+        
+        call.enqueue(loginCallback);
     }
 } 

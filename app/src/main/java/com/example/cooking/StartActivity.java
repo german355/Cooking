@@ -23,6 +23,7 @@ import com.google.android.gms.common.api.ApiException;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.auth.FirebaseUser;
+import android.app.AlertDialog;
 
 public class StartActivity extends AppCompatActivity {
     private TextInputEditText emailEditText;
@@ -212,20 +213,67 @@ public class StartActivity extends AppCompatActivity {
                     // Вход на сервере не удался
                     Log.e(TAG, "Ошибка входа на сервер: " + errorMessage);
                     
-                    // Выход из Firebase, так как авторизация на сервере не удалась
-                    firebaseAuthManager.signOut();
+                    // Проверяем, содержит ли сообщение об ошибке известные сетевые проблемы
+                    boolean isNetworkError = errorMessage.contains("timeout") || 
+                                            errorMessage.contains("unexpected end") ||
+                                            errorMessage.contains("Ошибка сети") ||
+                                            errorMessage.contains("Connection");
                     
-                    runOnUiThread(() -> {
-                        Toast.makeText(StartActivity.this, 
-                            "Ошибка входа на сервер: " + errorMessage, 
-                            Toast.LENGTH_LONG).show();
+                    // Если это повторная попытка, показываем соответствующее сообщение
+                    if (errorMessage.contains("Повторная попытка")) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(StartActivity.this, 
+                                "Проблемы с подключением. Повторная попытка входа...", 
+                                Toast.LENGTH_SHORT).show();
+                        });
+                        return; // Не выходим из аккаунта, так как будет повторная попытка
+                    }
+                    
+                    // Если это сетевая ошибка, предлагаем проверить соединение
+                    if (isNetworkError) {
+                        runOnUiThread(() -> {
+                            // Показываем AlertDialog с информацией и предложением повторить
+                            new AlertDialog.Builder(StartActivity.this)
+                                .setTitle("Проблема с подключением")
+                                .setMessage("Не удалось подключиться к серверу. Проверьте подключение к интернету и повторите попытку.")
+                                .setPositiveButton("Повторить", (dialog, which) -> {
+                                    // Повторяем попытку входа
+                                    Toast.makeText(StartActivity.this, "Повторная попытка...", Toast.LENGTH_SHORT).show();
+                                    handleFirebaseAuthSuccess(user);
+                                })
+                                .setNegativeButton("Отмена", (dialog, which) -> {
+                                    // Выход из Firebase
+                                    firebaseAuthManager.signOut();
+                                    
+                                    Toast.makeText(StartActivity.this, 
+                                        "Вход отменен", 
+                                        Toast.LENGTH_SHORT).show();
+                                    
+                                    // Восстанавливаем кнопку входа
+                                    if (firebaseLoginButton != null) {
+                                        firebaseLoginButton.setEnabled(true);
+                                        firebaseLoginButton.setText("Войти");
+                                    }
+                                })
+                                .setCancelable(false)
+                                .show();
+                        });
+                    } else {
+                        // Если это другая ошибка, выходим из Firebase и показываем стандартное сообщение
+                        firebaseAuthManager.signOut();
                         
-                        // Восстанавливаем кнопку входа, если пользователь использовал её
-                        if (firebaseLoginButton != null) {
-                            firebaseLoginButton.setEnabled(true);
-                            firebaseLoginButton.setText("Войти");
-                        }
-                    });
+                        runOnUiThread(() -> {
+                            Toast.makeText(StartActivity.this, 
+                                "Ошибка входа на сервер: " + errorMessage, 
+                                Toast.LENGTH_LONG).show();
+                            
+                            // Восстанавливаем кнопку входа, если пользователь использовал её
+                            if (firebaseLoginButton != null) {
+                                firebaseLoginButton.setEnabled(true);
+                                firebaseLoginButton.setText("Войти");
+                            }
+                        });
+                    }
                 }
             });
         }

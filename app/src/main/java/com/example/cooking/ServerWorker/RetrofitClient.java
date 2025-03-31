@@ -22,19 +22,8 @@ public class RetrofitClient {
      */
     public static Retrofit getClient() {
         if (retrofit == null) {
-            // Настраиваем логирование запросов
-            HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> 
-                Log.d(TAG, message));
-            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
-            
-            // Настраиваем клиент с таймаутами и логированием
-            OkHttpClient client = new OkHttpClient.Builder()
-                    .connectTimeout(20, TimeUnit.SECONDS)
-                    .readTimeout(20, TimeUnit.SECONDS)
-                    .writeTimeout(20, TimeUnit.SECONDS)
-                    .retryOnConnectionFailure(true)
-                    .addInterceptor(loggingInterceptor)
-                    .build();
+            // Используем HttpClientManager для создания OkHttpClient с обработкой ошибок
+            OkHttpClient client = HttpClientManager.getClient();
             
             // Создаем Retrofit с настроенным клиентом
             retrofit = new Retrofit.Builder()
@@ -42,6 +31,8 @@ public class RetrofitClient {
                     .client(client)
                     .addConverterFactory(GsonConverterFactory.create())
                     .build();
+            
+            Log.d(TAG, "Создан Retrofit клиент с улучшенной обработкой сетевых ошибок");
         }
         return retrofit;
     }
@@ -52,5 +43,14 @@ public class RetrofitClient {
      */
     public static ApiService getApiService() {
         return getClient().create(ApiService.class);
+    }
+    
+    /**
+     * Сброс Retrofit клиента для повторной инициализации
+     * Может быть полезно при изменении настроек авторизации или сети
+     */
+    public static void resetClient() {
+        retrofit = null;
+        Log.d(TAG, "Retrofit клиент сброшен");
     }
 } 
