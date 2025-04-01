@@ -73,6 +73,8 @@ public class RecipeDetailActivity extends AppCompatActivity {
         String created_at = getIntent().getStringExtra("Created_at");
         String userId = getIntent().getStringExtra("userId");
         String photoUrl = getIntent().getStringExtra("photo_url");
+        TextView creatTime = findViewById(R.id.recipe_date);
+        creatTime.setText("Создано: " + created_at);
 
         // Настраиваем заголовок Toolbar
         if (getSupportActionBar() != null) {
@@ -80,7 +82,6 @@ public class RecipeDetailActivity extends AppCompatActivity {
         }
 
         // Находим и настраиваем FAB
-        FloatingActionButton fabDelite = findViewById(R.id.delete_button);
         fabLike = findViewById(R.id.like_button);
         MySharedPreferences user = new MySharedPreferences(this);
 
@@ -93,36 +94,12 @@ public class RecipeDetailActivity extends AppCompatActivity {
         Log.d("permission", String.valueOf(permission));
         
         // Проверяем, принадлежит ли рецепт текущему пользователю
-        if ((userId != null && userId.equals(currentUserId) ) || permission == 2) {
-            fabDelite.setVisibility(View.VISIBLE);
-            Log.d("RecipeDetail","Fab иден");
-        } else {
-            fabDelite.setVisibility(View.GONE);
-            Log.d("RecipeDetail","Fab спрятан");
-        }
         
         // Проверяем, лайкнут ли рецепт, на основе переданных данных
         isLiked = getIntent().getBooleanExtra("isLiked", false);
         // Если рецепт лайкнут, меняем иконку кнопки
         updateLikeButtonState();
-        
-        // Настраиваем обработчик нажатия на кнопку удаления
-        fabDelite.setOnClickListener(view -> {
-            RecipeDeleter deleter = new RecipeDeleter(this);
-            deleter.deleteRecipe(recipeId, userId, permission, new RecipeDeleter.DeleteRecipeCallback() {
-                @Override
-                public void onDeleteSuccess() {
-                    Log.d("DeleteRecipe", "Рецепт удалён");
-                    finish();
-                }
 
-                @Override
-                public void onDeleteFailure(String error) {
-                    // Обработка ошибки удаления рецепта
-                    Log.e("DeleteRecipe", "Ошибка удаления рецепта:  " + error);
-                }
-            });
-        });
 
         // Настраиваем обработчик нажатия на кнопку лайка
         fabLike.setOnClickListener(view -> {
@@ -272,9 +249,10 @@ public class RecipeDetailActivity extends AppCompatActivity {
     }
     
     /**
-     * Обновляет состояние кнопки лайка в зависимости от текущего значения isLiked
+     * Обновляет состояние кнопки лайка в зависимости от isLiked
      */
     private void updateLikeButtonState() {
+        // Изменяем иконку в зависимости от состояния isLiked
         if (isLiked) {
             fabLike.setImageResource(R.drawable.ic_favorite);
         } else {
@@ -285,6 +263,33 @@ public class RecipeDetailActivity extends AppCompatActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.menu_recipe_detail, menu);
+        
+        // Проверяем, может ли пользователь редактировать/удалять рецепт
+        String recipeUserId = getIntent().getStringExtra("userId");
+        MySharedPreferences user = new MySharedPreferences(this);
+        String currentUserId = user.getString("userId", "0");
+        int permission = user.getInt("permission", 1);
+        
+        // Скрываем меню, если пользователь не создатель рецепта и не администратор
+        if (!(recipeUserId != null && recipeUserId.equals(currentUserId)) && permission != 2) {
+            MenuItem editItem = menu.findItem(R.id.action_edit);
+            MenuItem deleteItem = menu.findItem(R.id.action_delete);
+            
+            if (editItem != null) {
+                editItem.setVisible(false);
+            }
+            
+            if (deleteItem != null) {
+                deleteItem.setVisible(false);
+            }
+            
+            // Возможно также скрыть всё меню, если оно содержит только эти пункты
+            MenuItem moreItem = menu.findItem(R.id.action_more);
+            if (moreItem != null) {
+                moreItem.setVisible(false);
+            }
+        }
+        
         return true;
     }
     
@@ -301,10 +306,27 @@ public class RecipeDetailActivity extends AppCompatActivity {
             
             // Получаем данные о рецепте из Intent
             int recipeId = getIntent().getIntExtra("recipe_id", -1);
+            String userId = getIntent().getStringExtra("userId");
             String title = getIntent().getStringExtra("recipe_title");
             String ingredients = getIntent().getStringExtra("recipe_ingredients");
             String instructions = getIntent().getStringExtra("recipe_instructions");
             String photoUrl = getIntent().getStringExtra("photo_url");
+            
+            // Проверяем права пользователя на редактирование
+            MySharedPreferences user = new MySharedPreferences(this);
+            String currentUserId = user.getString("userId", "99");
+            int permission = user.getInt("permission", 1);
+            
+            // Если пользователь не автор рецепта и не администратор, показываем сообщение
+            if (!(userId != null && userId.equals(currentUserId)) && permission != 2) {
+                new AlertDialog.Builder(this)
+                    .setTitle("Недостаточно прав")
+                    .setMessage("У вас нет прав на редактирование этого рецепта. Только автор рецепта или администратор могут вносить изменения.")
+                    .setPositiveButton("Понятно", (dialog, which) -> dialog.dismiss())
+                    .setCancelable(true)
+                    .show();
+                return true;
+            }
             
             // Запускаем активность редактирования рецепта с передачей данных
             Intent intent = new Intent(this, EditRecipeActivity.class);
@@ -357,7 +379,19 @@ public class RecipeDetailActivity extends AppCompatActivity {
                 public void onDeleteFailure(String error) {
                     // Обработка ошибки удаления рецепта
                     Log.e("DeleteRecipe", "Ошибка удаления рецепта: " + error);
-                    Toast.makeText(RecipeDetailActivity.this, "Ошибка удаления рецепта: " + error, Toast.LENGTH_LONG).show();
+                    
+                    // Проверяем, содержит ли сообщение об ошибке информацию о недостатке прав (ошибка 403)
+                    if (error.contains("нет прав на удаление")) {
+                        // Показываем диалоговое окно с объяснением
+                        new AlertDialog.Builder(RecipeDetailActivity.this)
+                            .setTitle("Недостаточно прав")
+                            .setMessage(error)
+                            .setPositiveButton("Понятно", (dialog, which) -> dialog.dismiss())
+                            .setCancelable(true)
+                            .show();
+                    } else {
+                        Toast.makeText(RecipeDetailActivity.this, "Ошибка удаления рецепта: " + error, Toast.LENGTH_LONG).show();
+                    }
                 }
             });
         });

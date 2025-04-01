@@ -228,6 +228,12 @@ public class RecipeManager {
                         String errorBody = response.errorBody() != null ? response.errorBody().string() : null;
                         Log.e(TAG, "Ошибка HTTP " + response.code() + ": " + errorBody);
                         
+                        // Специальная обработка для кода 403 (Forbidden)
+                        if (response.code() == 403) {
+                            callback.onFailure("У вас нет прав на редактирование этого рецепта. Только автор рецепта или администратор могут вносить изменения.");
+                            return;
+                        }
+                        
                         // Проверяем, можно ли повторить запрос
                         if (retryCount < MAX_RETRY_ATTEMPTS && (response.code() >= 500 || response.code() == 429)) {
                             // Повторяем попытку при серверных ошибках (5xx) или слишком частых запросах (429)

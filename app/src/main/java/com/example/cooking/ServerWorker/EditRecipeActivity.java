@@ -25,6 +25,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
@@ -50,7 +51,6 @@ public class EditRecipeActivity extends AppCompatActivity {
     private Button saveButton;
     private ProgressBar progressBar;
     private ImageView recipeImageView;
-    private Button selectImageButton;
     private TextView textImage;
     
     private int recipeId;
@@ -81,7 +81,6 @@ public class EditRecipeActivity extends AppCompatActivity {
         saveButton = findViewById(R.id.save_button);
         progressBar = findViewById(R.id.progress_bar);
         recipeImageView = findViewById(R.id.recipe_image);
-        selectImageButton = findViewById(R.id.btn_select_image);
         textImage = findViewById(R.id.textImage);
         
         // Получаем данные из Intent
@@ -117,7 +116,7 @@ public class EditRecipeActivity extends AppCompatActivity {
         }
         
         // Настраиваем кнопку выбора изображения
-        selectImageButton.setOnClickListener(v -> {
+        recipeImageView.setOnClickListener(v -> {
             checkStoragePermissionAndPickImage();
         });
         
@@ -198,7 +197,24 @@ public class EditRecipeActivity extends AppCompatActivity {
             public void onFailure(String error) {
                 progressBar.setVisibility(View.GONE);
                 saveButton.setEnabled(true);
-                Toast.makeText(EditRecipeActivity.this, error, Toast.LENGTH_LONG).show();
+                
+                // Проверяем, содержит ли сообщение об ошибке информацию о недостатке прав (ошибка 403)
+                if (error.contains("нет прав на редактирование")) {
+                    // Показываем диалоговое окно с объяснением
+                    new AlertDialog.Builder(EditRecipeActivity.this)
+                        .setTitle("Недостаточно прав")
+                        .setMessage(error)
+                        .setPositiveButton("Понятно", (dialog, which) -> {
+                            dialog.dismiss();
+                            // Закрываем активность после закрытия диалога
+                            finish();
+                        })
+                        .setCancelable(false)
+                        .show();
+                } else {
+                    // Для других ошибок показываем стандартный Toast
+                    Toast.makeText(EditRecipeActivity.this, error, Toast.LENGTH_LONG).show();
+                }
             }
         });
     }

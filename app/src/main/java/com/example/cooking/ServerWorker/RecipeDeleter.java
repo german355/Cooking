@@ -80,7 +80,12 @@ public class RecipeDeleter {
                 if (response.isSuccessful()) {
                     return true;
                 } else {
-                    errorMessage = "Server error: " + response.code();
+                    // Специальная обработка для кода 403 (Forbidden)
+                    if (response.code() == 403) {
+                        errorMessage = "У вас нет прав на удаление этого рецепта. Только автор рецепта или администратор могут удалять рецепты.";
+                    } else {
+                        errorMessage = "Server error: " + response.code();
+                    }
                     return false;
                 }
             } catch (IOException e) {

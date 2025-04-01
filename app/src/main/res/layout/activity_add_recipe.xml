@@ -53,13 +53,13 @@
                     app:shapeAppearanceOverlay="@style/RoundedImageView" />
             </com.google.android.material.card.MaterialCardView>
 
-            <Button
+            <!--<Button
                 android:id="@+id/btn_select_image"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Выбрать фото рецепта"
                 android:layout_marginTop="8dp"
-                android:layout_marginBottom="16dp" />
+                android:layout_marginBottom="16dp" />-->
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/recipe_title_layout"

@@ -50,6 +50,7 @@ import okhttp3.Response;
 import okhttp3.MultipartBody;
 
 import static com.example.cooking.R.drawable.dowloadimage2;
+import static com.example.cooking.R.drawable.select_recipe_view;
 
 
 public class AddRecipeActivity extends AppCompatActivity {
@@ -100,8 +101,13 @@ public class AddRecipeActivity extends AppCompatActivity {
         
         // Инициализируем новые компоненты для работы с изображениями
         recipeImageView = findViewById(R.id.recipe_image);
-        recipeImageView.setImageResource(dowloadimage2);
-        selectImageButton = findViewById(R.id.btn_select_image);
+        recipeImageView.setImageResource(select_recipe_view);
+
+        recipeImageView.setOnClickListener(view -> {
+            Log.d(TAG, "onClick: Нажата кнопка выбора изображения");
+            checkStoragePermissionAndPickImage();
+        });
+
         
         Log.d(TAG, "onCreate: Все UI элементы инициализированы");
 
@@ -146,15 +152,7 @@ public class AddRecipeActivity extends AppCompatActivity {
             }
         });
         Log.d(TAG, "onCreate: Обработчик кнопки 'Сохранить' настроен");
-        
-        // Добавляем обработчик для кнопки выбора изображения
-        selectImageButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Log.d(TAG, "onClick: Нажата кнопка выбора изображения");
-                checkStoragePermissionAndPickImage();
-            }
-        });
+
         Log.d(TAG, "onCreate: Обработчик кнопки выбора изображения настроен");
     }
     
