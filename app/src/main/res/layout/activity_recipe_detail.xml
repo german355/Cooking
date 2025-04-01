@@ -101,17 +101,7 @@
         </ScrollView>
     </LinearLayout>
     <!-- Красная кнопка удаления с иконкой корзины -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/delete_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:layout_margin="16dp"
-        android:contentDescription="Удалить рецепт"
-        android:src="@android:drawable/ic_menu_delete"
-        android:visibility="gone"
-        app:backgroundTint="#F44336"
-        app:tint="@android:color/white" />
+
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/like_button"
