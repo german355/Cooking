@@ -27,7 +27,7 @@
             android:resource="@array/preloaded_fonts" />
         
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.activities.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -36,23 +36,20 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".StartActivity"
+            android:name=".ui.activities.RecipeDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.activities.MainActivity" />
+        <activity
+            android:name=".ui.activities.Regist"
             android:exported="false" />
         <activity
-            android:name=".Recipe.RecipeDetailActivity"
+            android:name=".ui.activities.AddRecipeActivity"
             android:exported="false"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".ui.activities.MainActivity" />
         <activity
-            android:name=".Regist"
-            android:exported="false" />
-        <activity
-            android:name=".ServerWorker.AddRecipeActivity"
+            android:name=".ui.activities.EditRecipeActivity"
             android:exported="false"
-            android:parentActivityName=".MainActivity" />
-        <activity
-            android:name=".ServerWorker.EditRecipeActivity"
-            android:exported="false"
-            android:parentActivityName=".Recipe.RecipeDetailActivity" />
+            android:parentActivityName=".ui.activities.RecipeDetailActivity" />
     </application>
 
 </manifest>
