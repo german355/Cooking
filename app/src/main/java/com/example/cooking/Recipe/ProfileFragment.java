@@ -7,12 +7,12 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 import androidx.fragment.app.Fragment;
 import com.example.cooking.FireBase.FirebaseAuthManager;
 import com.example.cooking.FireBase.FirebaseUserManager;
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
-import com.example.cooking.StartActivity;
 
 /**
  * Фрагмент для отображения профиля пользователя и настроек приложения
@@ -58,19 +58,16 @@ public class ProfileFragment extends Fragment {
             authManager.signOut();
         }
 
+        // Очищаем данные пользователя
         user.clear();
         
-        // Создаем Intent для перехода на экран входа
-        Intent intent = new Intent(requireActivity(), StartActivity.class);
-        
-        // Добавляем флаги, чтобы очистить бэкстек
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        
-        // Запускаем экран входа
-        startActivity(intent);
-        
-        // Закрываем текущую активность
-        requireActivity().finish();
+        // Заменяем текущий фрагмент на AuthFragment
+        requireActivity().getSupportFragmentManager().beginTransaction()
+                .replace(R.id.fragment_container, new com.example.cooking.fragments.AuthFragment())
+                .commit();
+                
+        // Показываем сообщение о выходе из аккаунта
+        Toast.makeText(requireContext(), "Вы вышли из аккаунта", Toast.LENGTH_SHORT).show();
     }
 
 
@@ -79,17 +76,7 @@ public class ProfileFragment extends Fragment {
 
         user.clear();
 
-        // Создаем Intent для перехода на экран входа
-        Intent intent = new Intent(requireActivity(), StartActivity.class);
 
-        // Добавляем флаги, чтобы очистить бэкстек
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-
-        // Запускаем экран входа
-        startActivity(intent);
-
-        // Закрываем текущую активность
-        requireActivity().finish();
 
     }
 }

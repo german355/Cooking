@@ -103,6 +103,12 @@ public class RecipeDetailActivity extends AppCompatActivity {
 
         // Настраиваем обработчик нажатия на кнопку лайка
         fabLike.setOnClickListener(view -> {
+            // Проверяем, авторизован ли пользователь
+            if (currentUserId.equals("0")) {
+                Toast.makeText(this, "Для добавления рецепта в избранное необходимо войти в аккаунт", Toast.LENGTH_LONG).show();
+                return;
+            }
+            
             // Переключаем визуальное состояние лайка
             isLiked = !isLiked;
             updateLikeButtonState();
@@ -218,6 +224,24 @@ public class RecipeDetailActivity extends AppCompatActivity {
                                 "Статус лайка изменен", 
                                 Toast.LENGTH_SHORT).show();
                         Log.d(TAG, "Лайк успешно изменен");
+                        
+                        // Если рецепт был лайкнут, добавляем его в FavoritesFragment
+                        if (isLiked) {
+                            Log.d(TAG, "Добавляем рецепт в FavoritesFragment");
+                            // Создаем объект Recipe из данных Intent
+                            Recipe recipe = new Recipe();
+                            recipe.setId(getIntent().getIntExtra("recipe_id", -1));
+                            recipe.setTitle(getIntent().getStringExtra("recipe_title"));
+                            recipe.setIngredients(getIntent().getStringExtra("recipe_ingredients"));
+                            recipe.setInstructions(getIntent().getStringExtra("recipe_instructions"));
+                            recipe.setPhoto_url(getIntent().getStringExtra("photo_url"));
+                            recipe.setCreated_at(getIntent().getStringExtra("Created_at"));
+                            recipe.setUserId(getIntent().getStringExtra("userId"));
+                            recipe.setLiked(true);
+                            
+                            // Добавляем в список избранного
+                            com.example.cooking.fragments.FavoritesFragment.addLikedRecipe(recipe);
+                        }
                         
                         // Установка результата для возврата в HomeFragment
                         Intent resultIntent = new Intent();

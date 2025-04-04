@@ -8,6 +8,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
+import com.example.cooking.FireBase.AuthCallback;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -64,7 +65,13 @@ public class FirebaseAuthManager {
                     .requestEmail()
                     .build();
             googleSignInClient = GoogleSignIn.getClient(context, gso);
-            Log.d(TAG, "Google Sign In client initialized successfully");
+            
+            // Проверка, что клиент успешно инициализирован
+            if (googleSignInClient != null) {
+                Log.d(TAG, "Google Sign In client initialized successfully");
+            } else {
+                Log.e(TAG, "Google Sign In client is null after initialization");
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error initializing Google Sign In client", e);
             Toast.makeText(context, "Ошибка настройки Google Sign In", Toast.LENGTH_SHORT).show();
@@ -137,10 +144,16 @@ public class FirebaseAuthManager {
         try {
             Log.d(TAG, "Starting Google Sign In flow");
             Intent signInIntent = googleSignInClient.getSignInIntent();
-            activity.startActivityForResult(signInIntent, RC_SIGN_IN);
+            if (signInIntent != null) {
+                Log.d(TAG, "Got sign in intent, starting activity for result with RC_SIGN_IN=" + RC_SIGN_IN);
+                activity.startActivityForResult(signInIntent, RC_SIGN_IN);
+            } else {
+                Log.e(TAG, "Sign in intent is null");
+                Toast.makeText(activity, "Ошибка запуска Google Sign In", Toast.LENGTH_SHORT).show();
+            }
         } catch (Exception e) {
             Log.e(TAG, "Error starting Google Sign In flow", e);
-            Toast.makeText(activity, "Ошибка запуска Google Sign In", Toast.LENGTH_SHORT).show();
+            Toast.makeText(activity, "Ошибка запуска Google Sign In: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -160,12 +173,32 @@ public class FirebaseAuthManager {
                 return;
             }
             
+            // Логируем extras из intent для отладки
+            if (data.getExtras() != null) {
+                for (String key : data.getExtras().keySet()) {
+                    Log.d(TAG, "Intent extra - key: " + key + 
+                          ", value: " + String.valueOf(data.getExtras().get(key)));
+                }
+            } else {
+                Log.d(TAG, "Intent extras are null");
+            }
+            
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            Log.d(TAG, "Created task from intent: " + (task != null ? "not null" : "null") + 
+                  ", isComplete: " + (task != null ? task.isComplete() : "N/A") + 
+                  ", isSuccessful: " + (task != null && task.isComplete() ? task.isSuccessful() : "N/A"));
             
             // Регистрируем слушатели задачи для более детального логирования
             task.addOnSuccessListener(account -> {
                 Log.d(TAG, "Google Sign In successful, account email: " + account.getEmail() + 
                       ", ID: " + account.getId() + ", has idToken: " + (account.getIdToken() != null));
+                
+                if (account.getIdToken() == null) {
+                    Log.e(TAG, "ID token is null, cannot authenticate with Firebase");
+                    authCallback.onError(new Exception("ID токен отсутствует"));
+                    return;
+                }
+                
                 firebaseAuthWithGoogle(account.getIdToken(), authCallback);
             }).addOnFailureListener(e -> {
                 Log.e(TAG, "Google Sign In task failed with exception", e);
@@ -174,11 +207,15 @@ public class FirebaseAuthManager {
                     int statusCode = apiException.getStatusCode();
                     Log.e(TAG, "Google Sign In API Exception with status code: " + statusCode);
                     
-                    // Добавим более детальное логирование для кода 10
+                    // Добавим более детальное логирование для различных кодов
                     if (statusCode == 10) {
                         Log.e(TAG, "DEVELOPER_ERROR (10): This error occurs when the client ID comes " +
                                "from a different project than the project that the app is running in, " +
                                "or if SHA-1 fingerprint is not configured properly in Firebase Console.");
+                    } else if (statusCode == 12501) {
+                        Log.e(TAG, "SIGN_IN_CANCELLED (12501): User cancelled the sign-in flow.");
+                    } else if (statusCode == 7) {
+                        Log.e(TAG, "NETWORK_ERROR (7): A network error occurred. Retry might solve this.");
                     }
                 }
                 authCallback.onError(e);

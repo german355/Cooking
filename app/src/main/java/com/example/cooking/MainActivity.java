@@ -8,20 +8,25 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.fragment.app.Fragment;
 import com.example.cooking.Recipe.ProfileFragment;
 import com.example.cooking.ServerWorker.AddRecipeActivity;
+import com.example.cooking.fragments.AuthFragment;
 import com.example.cooking.fragments.FavoritesFragment;
 import com.example.cooking.fragments.HomeFragment;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import android.view.View;
+import android.util.Log;
+import com.google.firebase.auth.FirebaseAuth;
+import com.example.cooking.FireBase.FirebaseAuthManager;
 
 /**
  * Главная активность приложения.
  * Отвечает за управление фрагментами и нижней навигацией.
  */
 public class MainActivity extends AppCompatActivity {
-    private BottomNavigationView bottomNavigationView;
+    public BottomNavigationView bottomNavigationView;
     private FloatingActionButton addButton;
     private Fragment currentFragment;
+    private MySharedPreferences preferences;
 
     /**
      * Вызывается при создании активности.
@@ -32,6 +37,17 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         addButton = findViewById(R.id.fab_add);
+        preferences = new MySharedPreferences(this);
+
+        // Инициализация Firebase Auth Manager и Google Sign In
+        FirebaseAuthManager firebaseAuthManager = FirebaseAuthManager.getInstance();
+        String webClientId = getString(R.string.default_web_client_id);
+        firebaseAuthManager.initGoogleSignIn(this, webClientId);
+
+
+
+        // Проверяем, чтобы избежать повторного добавления при повороте экрана
+
 
         // Настройка нижней навигации
         bottomNavigationView = findViewById(R.id.bottom_navigation);
@@ -45,8 +61,13 @@ public class MainActivity extends AppCompatActivity {
             } else if (itemId == R.id.nav_favorites) {
                 selectedFragment = new FavoritesFragment();
                 addButton.hide();
-            } else if (itemId == R.id.nav_profile) {
-                selectedFragment = new ProfileFragment();
+            } else if (itemId == R.id.nav_profile)  {
+                // Проверяем, авторизован ли пользователь
+                if (isUserLoggedIn()) {
+                    selectedFragment = new ProfileFragment();
+                } else {
+                    selectedFragment = new AuthFragment();
+                }
                 addButton.hide();
             }
 
@@ -61,22 +82,52 @@ public class MainActivity extends AppCompatActivity {
         });
 
         // Инициализируем и настраиваем кнопку добавления
-
         addButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Toast.makeText(MainActivity.this, "Добавление нового рецепта", Toast.LENGTH_SHORT).show();
-                Intent intent = new Intent(MainActivity.this, AddRecipeActivity.class);
-                startActivity(intent);
+                // Проверяем, авторизован ли пользователь
+                if (isUserLoggedIn()) {
+                    // Если авторизован, переходим к добавлению рецепта
+                    Toast.makeText(MainActivity.this, "Добавление нового рецепта", Toast.LENGTH_SHORT).show();
+                    Intent intent = new Intent(MainActivity.this, AddRecipeActivity.class);
+                    startActivity(intent);
+                } else {
+                    // Если не авторизован, показываем сообщение
+                    Toast.makeText(MainActivity.this, "Для добавления рецептов необходимо войти в аккаунт", Toast.LENGTH_SHORT).show();
+                    // Переключаемся на вкладку профиля для авторизации
+                    bottomNavigationView.setSelectedItemId(R.id.nav_profile);
+                }
             }
         });
 
         if (savedInstanceState == null) {
-            currentFragment = new HomeFragment();
+            // Проверяем наличие флага для показа фрагмента авторизации
+            boolean showAuthFragment = getIntent().getBooleanExtra("show_auth_fragment", false);
+            
+            if (showAuthFragment) {
+                // Показываем фрагмент авторизации и скрываем кнопку добавления
+                currentFragment = new AuthFragment();
+                addButton.hide();
+                // Устанавливаем выбранный пункт меню
+                bottomNavigationView.setSelectedItemId(R.id.nav_profile);
+            } else {
+                // По умолчанию показываем домашний фрагмент
+                currentFragment = new HomeFragment();
+            }
+            
             getSupportFragmentManager().beginTransaction()
                     .replace(R.id.fragment_container, currentFragment)
                     .commit();
         }
+    }
+
+    /**
+     * Проверяет, авторизован ли пользователь
+     * @return true если пользователь авторизован, false иначе
+     */
+    private boolean isUserLoggedIn() {
+        String userId = preferences.getString("userId", "0");
+        return !userId.equals("0");
     }
 
     @Override
@@ -124,5 +175,54 @@ public class MainActivity extends AppCompatActivity {
      */
     public void navigateToHomeFragment() {
         bottomNavigationView.setSelectedItemId(R.id.nav_home);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Если текущий фрагмент - профиль, проверяем статус авторизации
+        if (currentFragment instanceof ProfileFragment && !isUserLoggedIn()) {
+            // Если пользователь вышел из аккаунта, показываем AuthFragment
+            currentFragment = new AuthFragment();
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.fragment_container, currentFragment)
+                    .commit();
+        } else if (currentFragment instanceof AuthFragment && isUserLoggedIn()) {
+            // Если пользователь вошел в аккаунт, показываем ProfileFragment
+            currentFragment = new ProfileFragment();
+            getSupportFragmentManager().beginTransaction()
+                    .replace(R.id.fragment_container, currentFragment)
+                    .commit();
+        }
+    }
+    
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        
+        // Для отладки
+        Log.d("MainActivity", "onActivityResult: requestCode=" + requestCode + 
+                ", resultCode=" + resultCode + ", data=" + (data != null ? "не null" : "null"));
+
+        // Константа RC_SIGN_IN должна быть той же, что используется в FirebaseAuthManager
+        final int RC_SIGN_IN = 9001;
+        
+        // Если это ответ от Google Sign In, логируем дополнительную информацию
+        if (requestCode == RC_SIGN_IN) {
+            Log.d("MainActivity", "Получен результат для Google Sign In, передаю его в фрагмент");
+            
+            // Логирование extras из intent для отладки
+            if (data != null && data.getExtras() != null) {
+                for (String key : data.getExtras().keySet()) {
+                    Log.d("MainActivity", "Intent extra - key: " + key + 
+                          ", value: " + String.valueOf(data.getExtras().get(key)));
+                }
+            }
+        }
+        
+        // Передаем результат текущему фрагменту
+        if (currentFragment != null) {
+            currentFragment.onActivityResult(requestCode, resultCode, data);
+        }
     }
 }

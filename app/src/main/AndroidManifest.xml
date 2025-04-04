@@ -27,7 +27,7 @@
             android:resource="@array/preloaded_fonts" />
         
         <activity
-            android:name=".StartActivity"
+            android:name=".MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -36,7 +36,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".MainActivity"
+            android:name=".StartActivity"
             android:exported="false" />
         <activity
             android:name=".Recipe.RecipeDetailActivity"

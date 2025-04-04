@@ -19,6 +19,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import android.content.Intent;
 import android.widget.Toast;
 
+import com.example.cooking.MainActivity;
 import com.example.cooking.MySharedPreferences;
 import com.example.cooking.R;
 import com.example.cooking.Recipe.Recipe;
@@ -199,6 +200,10 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         // Проверяем, авторизован ли пользователь
         if (userId.equals("0")) {
             Toast.makeText(requireContext(), "Вы должны войти в систему, чтобы добавлять рецепты в избранное", Toast.LENGTH_SHORT).show();
+            // Перенаправляем на экран авторизации
+            if (getActivity() instanceof MainActivity) {
+                ((MainActivity) getActivity()).bottomNavigationView.setSelectedItemId(R.id.nav_profile);
+            }
             return;
         }
         
@@ -216,6 +221,12 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         
         if (position != -1) {
             adapter.notifyItemChanged(position);
+        }
+        
+        // Если рецепт был лайкнут, добавляем его в FavoritesFragment
+        if (isLiked) {
+            Log.d(TAG, "Добавляем рецепт в FavoritesFragment: " + recipe.getId() + " - " + recipe.getTitle());
+            FavoritesFragment.addLikedRecipe(recipe);
         }
         
         try {

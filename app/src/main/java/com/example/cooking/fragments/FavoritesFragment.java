@@ -38,6 +38,9 @@ import org.json.JSONObject;
 public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecipeLikeListener {
     private static final String TAG = "FavoritesFragment";
     
+    // Статическая ссылка на текущий экземпляр фрагмента для взаимодействия между фрагментами
+    private static FavoritesFragment currentInstance;
+    
     private LikedRecipesRepository likedRecipesRepository;
     private RecyclerView recyclerView;
     private RecipeAdapter adapter;
@@ -55,6 +58,9 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
     
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        // Сохраняем ссылку на текущий экземпляр фрагмента
+        currentInstance = this;
+        
         View view = inflater.inflate(R.layout.fragment_favorites, container, false);
         
         // Получаем ID пользователя из SharedPreferences
@@ -73,6 +79,14 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
         adapter = new RecipeAdapter(recipes, this);
         recyclerView.setAdapter(adapter);
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2));
+        
+        // Проверяем, авторизован ли пользователь
+        if (userId.equals("0")) {
+            // Если пользователь не авторизован, показываем соответствующее сообщение
+            showError("Для просмотра избранных рецептов необходимо войти в аккаунт");
+            swipeRefreshLayout.setEnabled(false); // Отключаем обновление свайпом
+            return view;
+        }
         
         // Инициализация и настройка SearchView
         SearchView searchView = view.findViewById(R.id.search_view_favorite);
@@ -146,18 +160,33 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
             public void onRecipesLoaded(List<Recipe> recipes) {
                 hideLoading();
                 
-                // Сохраняем полный список рецептов
-                allLikedRecipes = new ArrayList<>(recipes);
+                // Очищаем предыдущие данные
+                allLikedRecipes.clear();
                 
-                // Устанавливаем флаг liked для всех рецептов в списке лайкнутых
-                for (Recipe recipe : allLikedRecipes) {
+                // Проверяем каждый рецепт перед добавлением, чтобы избежать дубликатов
+                for (Recipe recipe : recipes) {
                     recipe.setLiked(true);
+                    
+                    // Проверяем, есть ли уже этот рецепт в списке по ID
+                    boolean isDuplicate = false;
+                    for (Recipe existing : allLikedRecipes) {
+                        if (existing.getId() == recipe.getId()) {
+                            isDuplicate = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!isDuplicate) {
+                        allLikedRecipes.add(recipe);
+                    } else {
+                        Log.w(TAG, "Найден дубликат рецепта с id: " + recipe.getId() + ", пропускаем");
+                    }
                 }
                 
-                // Обновляем UI
-                updateRecipesList(recipes);
+                Log.d(TAG, "Загружено " + allLikedRecipes.size() + " лайкнутых рецептов");
                 
-                Log.d(TAG, "Загружено " + recipes.size() + " лайкнутых рецептов");
+                // Обновляем UI
+                updateRecipesList(allLikedRecipes);
             }
 
             @Override
@@ -174,29 +203,63 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
      * Обновляет лайкнутые рецепты с сервера
      */
     private void refreshLikedRecipes() {
+        // Проверяем, что репозиторий инициализирован
+        if (likedRecipesRepository == null) {
+            Log.e(TAG, "Невозможно обновить лайкнутые рецепты: likedRecipesRepository == null");
+            if (swipeRefreshLayout != null && swipeRefreshLayout.isRefreshing()) {
+                swipeRefreshLayout.setRefreshing(false);
+            }
+            showError("Для просмотра избранных рецептов необходимо войти в аккаунт");
+            return;
+        }
+        
+        // Показываем индикатор обновления только если это явное обновление
         swipeRefreshLayout.setRefreshing(true);
+        
+        // Добавляем логирование для отладки
+        Log.d(TAG, "Запрашиваем обновление списка лайкнутых рецептов для пользователя: " + userId);
         
         likedRecipesRepository.getLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
             @Override
             public void onRecipesLoaded(List<Recipe> recipes) {
+                // Скрываем индикатор обновления
                 swipeRefreshLayout.setRefreshing(false);
                 
-                // Сохраняем полный список рецептов
-                allLikedRecipes = new ArrayList<>(recipes);
+                // Очищаем предыдущие данные полностью
+                allLikedRecipes.clear();
                 
-                // Устанавливаем флаг liked для всех рецептов в списке лайкнутых
-                for (Recipe recipe : allLikedRecipes) {
+                // Добавляем новые рецепты с проверкой на дубликаты
+                for (Recipe recipe : recipes) {
                     recipe.setLiked(true);
+                    
+                    // Проверяем, есть ли уже этот рецепт в списке по ID
+                    boolean isDuplicate = false;
+                    for (Recipe existing : allLikedRecipes) {
+                        if (existing.getId() == recipe.getId()) {
+                            isDuplicate = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!isDuplicate) {
+                        allLikedRecipes.add(recipe);
+                    } else {
+                        Log.w(TAG, "Найден дубликат рецепта с id: " + recipe.getId() + ", пропускаем");
+                    }
                 }
                 
-                // Обновляем UI
-                updateRecipesList(recipes);
+                Log.d(TAG, "Получено " + recipes.size() + " лайкнутых рецептов, после фильтрации: " + allLikedRecipes.size());
                 
-                // Проверяем, что контекст доступен перед показом Toast
-                if (getContext() != null) {
-                    Toast.makeText(getContext(), "Список лайкнутых рецептов обновлен", Toast.LENGTH_SHORT).show();
+                // Обновляем UI с чистым списком
+                updateRecipesList(allLikedRecipes);
+                
+                // Показываем Toast только при явном обновлении (когда пользователь тянет вниз)
+                if (swipeRefreshLayout.isRefreshing()) {
+                    // Проверяем, что контекст доступен перед показом Toast
+                    if (getContext() != null) {
+                        Toast.makeText(getContext(), "Список лайкнутых рецептов обновлен", Toast.LENGTH_SHORT).show();
+                    }
                 }
-                Log.d(TAG, "Обновлено " + recipes.size() + " лайкнутых рецептов");
             }
 
             @Override
@@ -365,9 +428,11 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
     @Override
     public void onResume() {
         super.onResume();
-        // Загружаем список только если он пуст
-        if (adapter.getItemCount() == 0) {
-            loadLikedRecipes();
+        
+        // Проверяем, авторизован ли пользователь и инициализирован ли репозиторий
+        if (!userId.equals("0") && likedRecipesRepository != null) {
+            // Обновляем список только если пользователь авторизован
+            refreshLikedRecipes();
         }
     }
 
@@ -379,22 +444,35 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
         Log.d(TAG, "Изменение лайка рецепта id:" + recipe.getId() + " на " + isLiked);
         
         if (!isLiked) {
-            // Если рецепт был удален из избранного, удаляем его из списка
-            int position = allLikedRecipes.indexOf(recipe);
-            if (position != -1) {
-                allLikedRecipes.remove(position);
-                
-                // Обновляем только удаленный элемент, не весь список
-                adapter.notifyItemRemoved(position);
-                
-                // Если список пуст, показываем пустое состояние
-                if (allLikedRecipes.isEmpty()) {
-                    showEmptyFavoritesFragment();
+            // Отправляем запрос на сервер сначала
+            toggleLikeOnServer(recipe, false);
+            
+            // Создаем новый список, исключая рецепт с удаленным лайком
+            List<Recipe> updatedRecipes = new ArrayList<>();
+            boolean recipeFound = false;
+            
+            for (Recipe r : allLikedRecipes) {
+                if (r.getId() == recipe.getId()) {
+                    recipeFound = true;
+                    Log.d(TAG, "Рецепт с id " + recipe.getId() + " найден и будет удален из списка");
+                } else {
+                    updatedRecipes.add(r);
                 }
             }
             
-            // Отправляем запрос на сервер без вызова полной перезагрузки
-            toggleLikeOnServer(recipe, false);
+            if (!recipeFound) {
+                Log.w(TAG, "Рецепт с id " + recipe.getId() + " не найден в списке allLikedRecipes!");
+            }
+            
+            // Обновляем список и UI
+            allLikedRecipes = updatedRecipes;
+            Log.d(TAG, "Размер обновленного списка: " + updatedRecipes.size());
+            adapter.updateRecipes(updatedRecipes);
+            
+            // Если список пуст, показываем пустое состояние
+            if (allLikedRecipes.isEmpty()) {
+                showEmptyFavoritesFragment();
+            }
         } else {
             // Если рецепт добавлен в избранное (что странно в данном фрагменте),
             // просто обновляем состояние на сервере
@@ -452,6 +530,66 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
             });
         } catch (Exception e) {
             Log.e(TAG, "Ошибка при создании запроса на изменение лайка", e);
+        }
+    }
+
+    /**
+     * Метод для обновления списка лайкнутых рецептов из других фрагментов
+     * @param recipe рецепт, который нужно добавить в список лайкнутых
+     */
+    public static void addLikedRecipe(Recipe recipe) {
+        if (currentInstance == null) {
+            Log.d(TAG, "Невозможно добавить рецепт в избранное: FavoritesFragment не инициализирован");
+            return;
+        }
+        
+        // Проверяем, авторизован ли пользователь
+        if (currentInstance.userId.equals("0")) {
+            Log.d(TAG, "Невозможно добавить рецепт в избранное: пользователь не авторизован");
+            return;
+        }
+        
+        // Проверяем, инициализирован ли репозиторий
+        if (currentInstance.likedRecipesRepository == null) {
+            Log.d(TAG, "Невозможно добавить рецепт в избранное: likedRecipesRepository не инициализирован");
+            return;
+        }
+        
+        Log.d(TAG, "Добавление рецепта в список лайкнутых: " + recipe.getId() + " - " + recipe.getTitle());
+        
+        // Создаем копию рецепта и устанавливаем флаг лайка
+        Recipe recipeCopy = new Recipe();
+        recipeCopy.setId(recipe.getId());
+        recipeCopy.setTitle(recipe.getTitle());
+        recipeCopy.setIngredients(recipe.getIngredients());
+        recipeCopy.setInstructions(recipe.getInstructions());
+        recipeCopy.setPhoto_url(recipe.getPhoto_url());
+        recipeCopy.setCreated_at(recipe.getCreated_at());
+        recipeCopy.setUserId(recipe.getUserId());
+        recipeCopy.setLiked(true);
+        
+        // Проверяем, есть ли уже этот рецепт в списке
+        boolean alreadyExists = false;
+        for (Recipe existing : currentInstance.allLikedRecipes) {
+            if (existing.getId() == recipe.getId()) {
+                alreadyExists = true;
+                break;
+            }
+        }
+        
+        // Если рецепта нет в списке, добавляем его
+        if (!alreadyExists) {
+            currentInstance.allLikedRecipes.add(recipeCopy);
+            
+            // Если фрагмент видим, обновляем UI
+            if (currentInstance.isVisible()) {
+                currentInstance.updateRecipesList(currentInstance.allLikedRecipes);
+            }
+            
+            Log.d(TAG, "Рецепт успешно добавлен в список лайкнутых (размер: " + 
+                    currentInstance.allLikedRecipes.size() + ")");
+        } else {
+            Log.d(TAG, "Рецепт уже есть в списке лайкнутых");
         }
     }
 } 

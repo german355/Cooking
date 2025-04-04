@@ -154,24 +154,15 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
     }
 
     public void updateRecipes(List<Recipe> newRecipes) {
-        // Используем DiffUtil для более эффективного обновления RecyclerView
-        // без полной перерисовки всех элементов
-        
-        // Если новый список тот же самый или пустой, не делаем ничего
+        // Если новый список null, не делаем ничего
         if (newRecipes == null) {
             return;
         }
         
-        // Создаем временные копии списков
-        final List<Recipe> oldList = new ArrayList<>(recipes);
-        final List<Recipe> newList = new ArrayList<>(newRecipes);
+        // Полностью заменяем список вместо простого добавления элементов
+        recipes = new ArrayList<>(newRecipes);
         
-        // Очищаем и обновляем основной список
-        this.recipes.clear();
-        this.recipes.addAll(newRecipes);
-        
-        // Используем более эффективное обновление только для видимых элементов
-        // вместо полного notifyDataSetChanged()
+        // Уведомляем адаптер об изменении всего датасета
         notifyDataSetChanged();
     }
 

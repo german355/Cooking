@@ -177,7 +177,9 @@ public class Regist extends AppCompatActivity {
 
         // Обработчик нажатия на текст входа
         enter.setOnClickListener(v -> {
-            Intent intent = new Intent(Regist.this, StartActivity.class);
+            Intent intent = new Intent(Regist.this, MainActivity.class);
+            // Добавляем флаг, указывающий, что нужно показать фрагмент авторизации
+            intent.putExtra("show_auth_fragment", true);
             startActivity(intent);
             finish();
         });
@@ -333,6 +335,20 @@ public class Regist extends AppCompatActivity {
                     Toast.makeText(Regist.this, 
                                   "Ошибка входа через Google: " + errorMessage, 
                                   Toast.LENGTH_LONG).show();
+                    
+                    // В случае серьезной ошибки перенаправляем на MainActivity с флагом для показа фрагмента авторизации
+                    if (exception instanceof ApiException) {
+                        ApiException apiException = (ApiException) exception;
+                        int statusCode = apiException.getStatusCode();
+                        
+                        // Коды ошибок, которые указывают на необходимость перехода к экрану авторизации
+                        if (statusCode != 12500 && statusCode != 12502) { // Не отменено пользователем и не в процессе
+                            Intent intent = new Intent(Regist.this, MainActivity.class);
+                            intent.putExtra("show_auth_fragment", true);
+                            startActivity(intent);
+                            finish();
+                        }
+                    }
                 }
             });
         }
@@ -381,6 +397,15 @@ public class Regist extends AppCompatActivity {
                     Toast.makeText(Regist.this, 
                         "Регистрация в Firebase успешна, но не удалось зарегистрироваться на сервере: " + 
                         errorMessage, Toast.LENGTH_LONG).show();
+                    
+                    // Если ошибка является критической, перенаправляем на главный экран 
+                    // с флагом для отображения экрана авторизации
+                    if (errorMessage.contains("timeout") || errorMessage.contains("network")) {
+                        Intent intent = new Intent(Regist.this, MainActivity.class);
+                        intent.putExtra("show_auth_fragment", true);
+                        startActivity(intent);
+                        finish();
+                    }
                 });
             }
         });
