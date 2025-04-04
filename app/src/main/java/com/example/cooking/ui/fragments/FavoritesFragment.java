@@ -49,7 +49,7 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
     private String userId;
     private List<Recipe> allLikedRecipes = new ArrayList<>();
     
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "http://r1.veroid.network:10009";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private OkHttpClient client = new OkHttpClient();
     

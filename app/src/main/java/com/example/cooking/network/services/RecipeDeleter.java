@@ -17,7 +17,7 @@ import okhttp3.Response;
 public class RecipeDeleter {
 
     private static final String TAG = "RecipeDeleter";
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "r1.veroid.network:10009";
     private final OkHttpClient client;
     private final Context context;
 

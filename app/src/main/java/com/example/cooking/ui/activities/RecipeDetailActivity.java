@@ -123,7 +123,7 @@ public class RecipeDetailActivity extends AppCompatActivity {
                 
                 // Создаем запрос к API
                 Request request = new Request.Builder()
-                        .url("http://g3.veroid.network:19029/like")
+                        .url("http://r1.veroid.network:10009/like")
                         .post(body)
                         .build();
                 

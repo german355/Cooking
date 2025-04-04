@@ -39,7 +39,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  */
 public class RecipeRepository {
     private static final String TAG = "RecipeRepository";
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "http://r1.veroid.network:10009";
     
     // Настройки кэша
     private static final long CACHE_SIZE = 10 * 1024 * 1024; // 10 МБ

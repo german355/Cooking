@@ -54,7 +54,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     private MySharedPreferences preferences;
     private String userId;
     
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "http://r1.veroid.network:10009";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private OkHttpClient client = new OkHttpClient();
 

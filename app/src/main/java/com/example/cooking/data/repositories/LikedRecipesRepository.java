@@ -34,7 +34,7 @@ public class LikedRecipesRepository {
     private static final String LAST_UPDATE_TIME_KEY = "liked_recipes_last_update_time";
     private static final long CACHE_EXPIRATION_TIME = 30 * 60 * 100; // 3 min
     private static final String PREF_NAME = "liked_recipe_cache";
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "http://r1.veroid.network:10009";
     
     private final Context context;
     private final LikedRecipesApi likedRecipesApi;

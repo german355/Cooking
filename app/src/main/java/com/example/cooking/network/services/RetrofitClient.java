@@ -10,7 +10,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  * Класс для настройки Retrofit клиента
  */
 public class RetrofitClient {
-    private static final String BASE_URL = "http://g3.veroid.network:19029/";
+    private static final String BASE_URL = "http://r1.veroid.network:10009/";
     private static final String TAG = "RetrofitClient";
     private static Retrofit retrofit = null;
     

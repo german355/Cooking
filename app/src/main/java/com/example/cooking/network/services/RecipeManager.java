@@ -30,7 +30,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  */
 public class RecipeManager {
     private static final String TAG = "RecipeManager";
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "http://r1.veroid.network:10009";
     
     // Увеличенные таймауты для стабильности
     private static final int CONNECT_TIMEOUT = 30; // 30 секунд

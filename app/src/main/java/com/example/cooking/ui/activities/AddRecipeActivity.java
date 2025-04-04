@@ -62,7 +62,7 @@ public class AddRecipeActivity extends AppCompatActivity {
     private Uri selectedImageUri;
     private byte[] imageBytes;
     
-    private static final String API_URL = "http://g3.veroid.network:19029";
+    private static final String API_URL = "http://r1.veroid.network:10009";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
             .retryOnConnectionFailure(true)
