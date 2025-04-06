@@ -1,6 +1,7 @@
-package com.example.cooking.FireBase;
+package com.example.cooking.auth;
 
 import android.app.Activity;
+import android.app.Application;
 import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
@@ -8,7 +9,6 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
-import com.example.cooking.FireBase.AuthCallback;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -37,14 +37,40 @@ public class FirebaseAuthManager {
     private static FirebaseAuthManager instance;
     private final FirebaseAuth firebaseAuth;
     private GoogleSignInClient googleSignInClient;
+    private Context context;
     
     // Константа для запроса авторизации через Google
     public static final int RC_SIGN_IN = 9001;
 
-    private FirebaseAuthManager() {
+    // Интерфейсы обратных вызовов
+    public interface AuthCallback {
+        void onSuccess(FirebaseUser user);
+        void onError(String message);
+    }
+
+    public interface UpdateProfileCallback {
+        void onSuccess();
+        void onError(String message);
+    }
+
+    /**
+     * Конструктор по умолчанию
+     */
+    public FirebaseAuthManager() {
         firebaseAuth = FirebaseAuth.getInstance();
     }
 
+    /**
+     * Конструктор с контекстом приложения
+     */
+    public FirebaseAuthManager(Application application) {
+        this();
+        this.context = application.getApplicationContext();
+    }
+
+    /**
+     * Получение экземпляра класса (Singleton)
+     */
     public static synchronized FirebaseAuthManager getInstance() {
         if (instance == null) {
             instance = new FirebaseAuthManager();
@@ -107,7 +133,10 @@ public class FirebaseAuthManager {
                         FirebaseUser user = firebaseAuth.getCurrentUser();
                         authCallback.onSuccess(user);
                     } else {
-                        authCallback.onError(task.getException());
+                        String errorMessage = task.getException() != null ? 
+                                task.getException().getMessage() : 
+                                "Неизвестная ошибка при регистрации";
+                        authCallback.onError(errorMessage);
                     }
                 });
     }
@@ -125,7 +154,89 @@ public class FirebaseAuthManager {
                         FirebaseUser user = firebaseAuth.getCurrentUser();
                         authCallback.onSuccess(user);
                     } else {
-                        authCallback.onError(task.getException());
+                        String errorMessage = task.getException() != null ? 
+                                task.getException().getMessage() : 
+                                "Неизвестная ошибка при входе";
+                        authCallback.onError(errorMessage);
+                    }
+                });
+    }
+
+    /**
+     * Обновляет имя пользователя в профиле Firebase
+     * @param user текущий пользователь Firebase
+     * @param displayName новое имя пользователя
+     * @param callback интерфейс для обработки результата
+     */
+    public void updateUserDisplayName(FirebaseUser user, String displayName, UpdateProfileCallback callback) {
+        if (user == null) {
+            callback.onError("Пользователь не авторизован");
+            return;
+        }
+
+        user.updateProfile(new com.google.firebase.auth.UserProfileChangeRequest.Builder()
+                .setDisplayName(displayName)
+                .build())
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        callback.onSuccess();
+                    } else {
+                        String errorMessage = task.getException() != null ? 
+                                task.getException().getMessage() : 
+                                "Неизвестная ошибка при обновлении профиля";
+                        callback.onError(errorMessage);
+                    }
+                });
+    }
+
+    /**
+     * Обновляет пароль пользователя в Firebase
+     * @param user текущий пользователь Firebase
+     * @param newPassword новый пароль
+     * @param callback интерфейс для обработки результата
+     */
+    public void updateUserPassword(FirebaseUser user, String newPassword, UpdateProfileCallback callback) {
+        if (user == null) {
+            callback.onError("Пользователь не авторизован");
+            return;
+        }
+
+        user.updatePassword(newPassword)
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        callback.onSuccess();
+                    } else {
+                        String errorMessage = task.getException() != null ? 
+                                task.getException().getMessage() : 
+                                "Неизвестная ошибка при обновлении пароля";
+                        callback.onError(errorMessage);
+                    }
+                });
+    }
+
+    /**
+     * Повторная аутентификация пользователя (необходима для операций, требующих недавней аутентификации)
+     * @param user текущий пользователь Firebase
+     * @param email email пользователя
+     * @param password текущий пароль пользователя
+     * @param callback интерфейс для обработки результата
+     */
+    public void reauthenticate(FirebaseUser user, String email, String password, AuthCallback callback) {
+        if (user == null) {
+            callback.onError("Пользователь не авторизован");
+            return;
+        }
+
+        AuthCredential credential = com.google.firebase.auth.EmailAuthProvider.getCredential(email, password);
+        user.reauthenticate(credential)
+                .addOnCompleteListener(task -> {
+                    if (task.isSuccessful()) {
+                        callback.onSuccess(user);
+                    } else {
+                        String errorMessage = task.getException() != null ? 
+                                task.getException().getMessage() : 
+                                "Неизвестная ошибка при повторной аутентификации";
+                        callback.onError(errorMessage);
                     }
                 });
     }
@@ -164,93 +275,53 @@ public class FirebaseAuthManager {
      */
     public void handleGoogleSignInResult(Intent data, AuthCallback authCallback) {
         try {
-            Log.d(TAG, "Handling Google Sign In result, intent: " + 
-                  (data != null ? "not null" : "null"));
+            Log.d(TAG, "Handling Google Sign In result");
             
             if (data == null) {
                 Log.e(TAG, "Google Sign In data is null");
-                authCallback.onError(new Exception("Данные для Google Sign In отсутствуют"));
+                authCallback.onError("Данные для Google Sign In отсутствуют");
                 return;
             }
             
-            // Логируем extras из intent для отладки
-            if (data.getExtras() != null) {
-                for (String key : data.getExtras().keySet()) {
-                    Log.d(TAG, "Intent extra - key: " + key + 
-                          ", value: " + String.valueOf(data.getExtras().get(key)));
-                }
-            } else {
-                Log.d(TAG, "Intent extras are null");
-            }
-            
             Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
-            Log.d(TAG, "Created task from intent: " + (task != null ? "not null" : "null") + 
-                  ", isComplete: " + (task != null ? task.isComplete() : "N/A") + 
-                  ", isSuccessful: " + (task != null && task.isComplete() ? task.isSuccessful() : "N/A"));
+            GoogleSignInAccount account = task.getResult(ApiException.class);
             
-            // Регистрируем слушатели задачи для более детального логирования
-            task.addOnSuccessListener(account -> {
-                Log.d(TAG, "Google Sign In successful, account email: " + account.getEmail() + 
-                      ", ID: " + account.getId() + ", has idToken: " + (account.getIdToken() != null));
-                
-                if (account.getIdToken() == null) {
-                    Log.e(TAG, "ID token is null, cannot authenticate with Firebase");
-                    authCallback.onError(new Exception("ID токен отсутствует"));
-                    return;
-                }
-                
-                firebaseAuthWithGoogle(account.getIdToken(), authCallback);
-            }).addOnFailureListener(e -> {
-                Log.e(TAG, "Google Sign In task failed with exception", e);
-                if (e instanceof ApiException) {
-                    ApiException apiException = (ApiException) e;
-                    int statusCode = apiException.getStatusCode();
-                    Log.e(TAG, "Google Sign In API Exception with status code: " + statusCode);
-                    
-                    // Добавим более детальное логирование для различных кодов
-                    if (statusCode == 10) {
-                        Log.e(TAG, "DEVELOPER_ERROR (10): This error occurs when the client ID comes " +
-                               "from a different project than the project that the app is running in, " +
-                               "or if SHA-1 fingerprint is not configured properly in Firebase Console.");
-                    } else if (statusCode == 12501) {
-                        Log.e(TAG, "SIGN_IN_CANCELLED (12501): User cancelled the sign-in flow.");
-                    } else if (statusCode == 7) {
-                        Log.e(TAG, "NETWORK_ERROR (7): A network error occurred. Retry might solve this.");
-                    }
-                }
-                authCallback.onError(e);
-            });
-            
-            try {
-                // Попытка получить результат напрямую (может вызвать исключение)
-                GoogleSignInAccount account = task.getResult(ApiException.class);
-                Log.d(TAG, "Got Google Sign In account result directly, proceeding with Firebase auth");
-                firebaseAuthWithGoogle(account.getIdToken(), authCallback);
-            } catch (ApiException e) {
-                // Ничего не делаем здесь, так как обработка ошибки будет через OnFailureListener
-                Log.d(TAG, "Caught ApiException when trying to get result directly. " +
-                      "This is expected behavior, failure will be handled by OnFailureListener");
+            if (account == null || account.getIdToken() == null) {
+                Log.e(TAG, "ID token is null, cannot authenticate with Firebase");
+                authCallback.onError("ID токен отсутствует");
+                return;
             }
+            
+            // Аутентификация с Firebase
+            firebaseAuthWithGoogle(account.getIdToken(), authCallback);
+            
+        } catch (ApiException e) {
+            Log.e(TAG, "Google Sign In failed: " + e.getStatusCode(), e);
+            authCallback.onError("Ошибка входа через Google: " + e.getMessage());
         } catch (Exception e) {
             Log.e(TAG, "Unexpected error during Google Sign In", e);
-            authCallback.onError(e);
+            authCallback.onError("Непредвиденная ошибка: " + e.getMessage());
         }
     }
 
     /**
-     * Аутентификация в Firebase с использованием токена Google
-     * @param idToken токен аутентификации Google
+     * Аутентификация с Firebase через Google ID токен
+     * @param idToken ID токен Google
      * @param authCallback интерфейс для обработки результата
      */
     private void firebaseAuthWithGoogle(String idToken, AuthCallback authCallback) {
         AuthCredential credential = GoogleAuthProvider.getCredential(idToken, null);
+        
         firebaseAuth.signInWithCredential(credential)
                 .addOnCompleteListener(task -> {
                     if (task.isSuccessful()) {
                         FirebaseUser user = firebaseAuth.getCurrentUser();
                         authCallback.onSuccess(user);
                     } else {
-                        authCallback.onError(task.getException());
+                        String errorMessage = task.getException() != null ? 
+                                task.getException().getMessage() : 
+                                "Неизвестная ошибка при аутентификации с Firebase";
+                        authCallback.onError(errorMessage);
                     }
                 });
     }
@@ -259,9 +330,9 @@ public class FirebaseAuthManager {
      * Выход из аккаунта
      */
     public void signOut() {
-        firebaseAuth.signOut();
         if (googleSignInClient != null) {
             googleSignInClient.signOut();
         }
+        firebaseAuth.signOut();
     }
 } 

@@ -30,11 +30,13 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.bumptech.glide.Glide;
 import com.example.cooking.utils.MySharedPreferences;
 import com.example.cooking.R;
 import com.example.cooking.network.services.RecipeManager;
+import com.example.cooking.ui.viewmodels.EditRecipeViewModel;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
@@ -54,11 +56,9 @@ public class EditRecipeActivity extends AppCompatActivity {
     private ImageView recipeImageView;
     private TextView textImage;
     
+    private EditRecipeViewModel viewModel;
     private int recipeId;
     private String photoUrl;
-    private Uri selectedImageUri;
-    private byte[] imageBytes;
-    private MySharedPreferences user;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,14 +66,14 @@ public class EditRecipeActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_add_recipe); // Используем тот же layout, что и для добавления
         
+        // Инициализируем ViewModel
+        viewModel = new ViewModelProvider(this).get(EditRecipeViewModel.class);
+        
         // Настраиваем toolbar
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         getSupportActionBar().setTitle("Редактировать рецепт");
-        
-        // Инициализируем SharedPreferences
-        user = new MySharedPreferences(this);
         
         // Инициализируем представления
         titleEditText = findViewById(R.id.recipe_title);
@@ -99,112 +99,86 @@ public class EditRecipeActivity extends AppCompatActivity {
             return;
         }
         
-        // Заполняем поля данными рецепта
-        titleEditText.setText(title);
-        ingredientsEditText.setText(ingredients);
-        instructionsEditText.setText(instructions);
+        // Устанавливаем данные рецепта в ViewModel
+        viewModel.setRecipeData(recipeId, title, ingredients, instructions, photoUrl);
         
-        // Загружаем изображение, если оно есть
-        if (photoUrl != null && !photoUrl.isEmpty()) {
-            // Загружаем изображение в ImageView
-            Glide.with(this)
-                .load(photoUrl)
-                .into(recipeImageView);
-            textImage.setText("Изображение загружено");
-            
-            // Также загружаем изображение в байты для сохранения при обновлении
-            loadImageFromUrl(photoUrl);
-        }
+        // Настраиваем наблюдателей LiveData
+        setupObservers();
         
-        // Настраиваем кнопку выбора изображения
-        recipeImageView.setOnClickListener(v -> {
-            checkStoragePermissionAndPickImage();
-        });
+        // Настраиваем обработчики событий
+        setupEventListeners();
         
         // Настраиваем кнопку сохранения
         saveButton.setText("Сохранить изменения"); // Меняем текст кнопки для редактирования
-        saveButton.setOnClickListener(v -> {
-            String newTitle = titleEditText.getText().toString();
-            String newIngredients = ingredientsEditText.getText().toString();
-            String newInstructions = instructionsEditText.getText().toString();
-            
-            if (validateTitle(newTitle) && validateIngredients(newIngredients) && 
-                    validateInstructions(newInstructions)) {
-                updateRecipe();
-            }
-        });
     }
     
     /**
-     * Обновляет рецепт через RecipeManager
+     * Настраивает наблюдателей LiveData для обновления UI
      */
-    private void updateRecipe() {
-        Log.d(TAG, "updateRecipe: Начало процесса обновления рецепта");
-        
-        // Проверяем подключение к интернету
-        if (!isNetworkAvailable()) {
-            Toast.makeText(this, "Отсутствует подключение к интернету", Toast.LENGTH_LONG).show();
-            return;
-        }
-        
-        // Получаем введенные пользователем данные
-        String title = titleEditText.getText().toString().trim();
-        String ingredients = ingredientsEditText.getText().toString().trim();
-        String instructions = instructionsEditText.getText().toString().trim();
-        String userId = user.getString("userId", "99");
-        
-        // Показываем индикатор загрузки и блокируем кнопку
-        progressBar.setVisibility(View.VISIBLE);
-        saveButton.setEnabled(false);
-        
-        // Проверяем статус изображения
-        if (imageBytes == null && photoUrl != null && !photoUrl.isEmpty()) {
-            // Если изображение не загрузилось из URL, но URL существует
-            Toast.makeText(this, "Подождите, изображение еще загружается", Toast.LENGTH_SHORT).show();
-            progressBar.setVisibility(View.GONE);
-            saveButton.setEnabled(true);
-            return;
-        }
-        
-        // Логируем наличие изображения
-        if (imageBytes != null) {
-            Log.d(TAG, "updateRecipe: Изображение готово к отправке, размер: " + imageBytes.length + " байт");
-        } else {
-            Log.d(TAG, "updateRecipe: Изображение не будет обновлено (imageBytes = null)");
-        }
-        
-        // Создаем RecipeManager и обновляем рецепт
-        RecipeManager recipeManager = new RecipeManager(this);
-        recipeManager.saveRecipe(title, ingredients, instructions, userId, recipeId, imageBytes, 
-                new RecipeManager.RecipeSaveCallback() {
-            @Override
-            public void onSuccess(String message) {
-                progressBar.setVisibility(View.GONE);
-                saveButton.setEnabled(true);
-                Toast.makeText(EditRecipeActivity.this, message, Toast.LENGTH_LONG).show();
-                
-                // Возвращаем результат в RecipeDetailActivity и закрываем
-                Intent resultIntent = new Intent();
-                resultIntent.putExtra("recipe_title", title);
-                resultIntent.putExtra("recipe_ingredients", ingredients);
-                resultIntent.putExtra("recipe_instructions", instructions);
-                resultIntent.putExtra("photo_url", photoUrl); // Возвращаем URL изображения
-                setResult(RESULT_OK, resultIntent);
-                
-                finish();
+    private void setupObservers() {
+        // Наблюдатель для заголовка
+        viewModel.getTitle().observe(this, title -> {
+            if (!titleEditText.getText().toString().equals(title)) {
+                titleEditText.setText(title);
             }
-            
-            @Override
-            public void onFailure(String error) {
-                progressBar.setVisibility(View.GONE);
-                saveButton.setEnabled(true);
-                
+        });
+        
+        // Наблюдатель для ингредиентов
+        viewModel.getIngredients().observe(this, ingredients -> {
+            if (!ingredientsEditText.getText().toString().equals(ingredients)) {
+                ingredientsEditText.setText(ingredients);
+            }
+        });
+        
+        // Наблюдатель для инструкций
+        viewModel.getInstructions().observe(this, instructions -> {
+            if (!instructionsEditText.getText().toString().equals(instructions)) {
+                instructionsEditText.setText(instructions);
+            }
+        });
+        
+        // Наблюдатель для URL фото
+        viewModel.getPhotoUrl().observe(this, url -> {
+            photoUrl = url;
+            if (url != null && !url.isEmpty()) {
+                // Загружаем изображение в ImageView
+                Glide.with(this)
+                    .load(url)
+                    .into(recipeImageView);
+                textImage.setText("Изображение загружено");
+            }
+        });
+        
+        // Наблюдатель для байтов изображения
+        viewModel.getImageBytes().observe(this, bytes -> {
+            if (bytes != null && bytes.length > 0) {
+                // Отображаем изображение из байтов
+                Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                recipeImageView.setImageBitmap(bitmap);
+                textImage.setText("Изображение загружено");
+            }
+        });
+        
+        // Наблюдатель для состояния загрузки
+        viewModel.getIsLoading().observe(this, isLoading -> {
+            progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+            saveButton.setEnabled(!isLoading);
+            if (isLoading) {
+                saveButton.setText("Сохранение...");
+            } else {
+                saveButton.setText("Сохранить изменения");
+            }
+        });
+        
+        // Наблюдатель для сообщений об ошибках
+        viewModel.getErrorMessage().observe(this, errorMessage -> {
+            if (errorMessage != null && !errorMessage.isEmpty()) {
                 // Проверяем, содержит ли сообщение об ошибке информацию о недостатке прав (ошибка 403)
-                if (error.contains("нет прав на редактирование")) {
+                if (errorMessage.contains("нет прав на редактирование")) {
                     // Показываем диалоговое окно с объяснением
                     new AlertDialog.Builder(EditRecipeActivity.this)
                         .setTitle("Недостаточно прав")
-                        .setMessage(error)
+                        .setMessage(errorMessage)
                         .setPositiveButton("Понятно", (dialog, which) -> {
                             dialog.dismiss();
                             // Закрываем активность после закрытия диалога
@@ -214,253 +188,134 @@ public class EditRecipeActivity extends AppCompatActivity {
                         .show();
                 } else {
                     // Для других ошибок показываем стандартный Toast
-                    Toast.makeText(EditRecipeActivity.this, error, Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, errorMessage, Toast.LENGTH_LONG).show();
                 }
+            }
+        });
+        
+        // Наблюдатель для сообщений об успехе
+        viewModel.getSuccessMessage().observe(this, successMessage -> {
+            if (successMessage != null && !successMessage.isEmpty()) {
+                Toast.makeText(this, successMessage, Toast.LENGTH_LONG).show();
+                
+                // Возвращаем результат в RecipeDetailActivity и закрываем
+                Intent resultIntent = new Intent();
+                resultIntent.putExtra("recipe_title", viewModel.getTitle().getValue());
+                resultIntent.putExtra("recipe_ingredients", viewModel.getIngredients().getValue());
+                resultIntent.putExtra("recipe_instructions", viewModel.getInstructions().getValue());
+                resultIntent.putExtra("photo_url", photoUrl); // Возвращаем URL изображения
+                setResult(RESULT_OK, resultIntent);
+                
+                finish();
             }
         });
     }
     
     /**
-     * Загружает изображение из URL и преобразует его в массив байтов
+     * Настраивает обработчики событий UI
      */
-    private void loadImageFromUrl(String url) {
-        if (url == null || url.isEmpty()) {
-            Log.e(TAG, "loadImageFromUrl: URL пустой или null");
-            return;
-        }
-        
-        // Сначала загружаем изображение в ImageView через Glide для быстрого отображения
-        Glide.with(this)
-             .load(url)
-             .into(recipeImageView);
-        
-        // Показываем прогресс загрузки
-        progressBar.setVisibility(View.VISIBLE);
-        textImage.setText("Загрузка изображения...");
-        
-        // Запускаем загрузку в отдельном потоке
-        new Thread(() -> {
-            try {
-                // Загружаем изображение из URL
-                java.net.URL imageUrl = new java.net.URL(url);
-                Bitmap bitmap = BitmapFactory.decodeStream(imageUrl.openConnection().getInputStream());
-                
-                if (bitmap != null) {
-                    // Сжимаем изображение до разумного размера
-                    Bitmap resizedBitmap = resizeBitmap(bitmap, 800);
-                    
-                    // Преобразуем в массив байтов
-                    ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                    resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, byteArrayOutputStream);
-                    imageBytes = byteArrayOutputStream.toByteArray();
-                    
-                    // Обновляем UI в основном потоке
-                    runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        textImage.setText("Изображение загружено");
-                        Log.d(TAG, "Изображение загружено из URL и сохранено в памяти");
-                    });
-                } else {
-                    // Если не удалось загрузить изображение
-                    runOnUiThread(() -> {
-                        progressBar.setVisibility(View.GONE);
-                        textImage.setText("Не удалось загрузить изображение");
-                        Log.e(TAG, "Не удалось загрузить изображение из URL");
-                    });
-                }
-            } catch (Exception e) {
-                // В случае ошибки
-                runOnUiThread(() -> {
-                    progressBar.setVisibility(View.GONE);
-                    textImage.setText("Ошибка загрузки изображения");
-                    Log.e(TAG, "Ошибка при загрузке изображения из URL: " + e.getMessage(), e);
-                });
+    private void setupEventListeners() {
+        // Обработчик изменения заголовка
+        titleEditText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                viewModel.setTitle(titleEditText.getText().toString());
             }
-        }).start();
+        });
+        
+        // Обработчик изменения ингредиентов
+        ingredientsEditText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                viewModel.setIngredients(ingredientsEditText.getText().toString());
+            }
+        });
+        
+        // Обработчик изменения инструкций
+        instructionsEditText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                viewModel.setInstructions(instructionsEditText.getText().toString());
+            }
+        });
+        
+        // Настраиваем кнопку выбора изображения
+        recipeImageView.setOnClickListener(v -> {
+            checkStoragePermissionAndPickImage();
+        });
+        
+        // Настраиваем кнопку сохранения
+        saveButton.setOnClickListener(v -> {
+            // Обновляем данные в ViewModel перед сохранением
+            viewModel.setTitle(titleEditText.getText().toString());
+            viewModel.setIngredients(ingredientsEditText.getText().toString());
+            viewModel.setInstructions(instructionsEditText.getText().toString());
+            
+            // Запускаем процесс обновления рецепта
+            viewModel.updateRecipe();
+        });
     }
     
-    // Проверка разрешения на доступ к хранилищу и выбор изображения
+    /**
+     * Проверяет разрешение на доступ к хранилищу и открывает галерею
+     */
     private void checkStoragePermissionAndPickImage() {
-        // Определяем, какое разрешение запрашивать в зависимости от версии Android
-        String permission;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // Android 13+ (API 33+)
-            permission = Manifest.permission.READ_MEDIA_IMAGES;
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, 
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 
+                    REQUEST_STORAGE_PERMISSION);
         } else {
-            permission = Manifest.permission.READ_EXTERNAL_STORAGE;
-        }
-        
-        if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            // Запрашиваем разрешение
-            ActivityCompat.requestPermissions(this, new String[]{permission}, REQUEST_STORAGE_PERMISSION);
-            // Показываем пользователю, почему нужно разрешение
-            Toast.makeText(this, "Для выбора фото необходимо предоставить разрешение на доступ к галерее", 
-                    Toast.LENGTH_LONG).show();
-        } else {
-            // Если разрешение уже есть, открываем галерею
             openGallery();
         }
     }
     
-    // Открытие галереи для выбора изображения
+    /**
+     * Открывает галерею для выбора изображения
+     */
     private void openGallery() {
-        try {
-            Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
-            startActivityForResult(intent, REQUEST_PICK_IMAGE);
-        } catch (Exception e) {
-            Log.e(TAG, "openGallery: Ошибка при открытии галереи", e);
-            Toast.makeText(this, "Не удалось открыть галерею: " + e.getMessage(), 
-                    Toast.LENGTH_SHORT).show();
-        }
+        Intent intent = new Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+        startActivityForResult(intent, REQUEST_PICK_IMAGE);
     }
     
-    // Обработка результата запроса разрешения
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_STORAGE_PERMISSION) {
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Если разрешение получено, открываем галерею
                 openGallery();
             } else {
-                Toast.makeText(this, "Для выбора изображения необходим доступ к хранилищу", 
-                        Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "Необходимо разрешение для выбора изображения", Toast.LENGTH_SHORT).show();
             }
         }
     }
     
-    // Обработка результата выбора изображения
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_PICK_IMAGE && resultCode == RESULT_OK && data != null) {
-            try {
-                selectedImageUri = data.getData();
-                // Отображаем выбранное изображение
-                recipeImageView.setImageURI(selectedImageUri);
-                
-                // Преобразуем изображение в массив байтов для отправки
-                InputStream inputStream = getContentResolver().openInputStream(selectedImageUri);
-                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
-                
-                // Сжимаем изображение до разумного размера
-                Bitmap resizedBitmap = resizeBitmap(bitmap, 800);
-                
-                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, byteArrayOutputStream);
-                imageBytes = byteArrayOutputStream.toByteArray();
-                
-                if (inputStream != null) {
-                    inputStream.close();
-                }
-                
+            Uri selectedImageUri = data.getData();
+            if (selectedImageUri != null) {
+                // Передаем Uri выбранного изображения в ViewModel для обработки
+                viewModel.processSelectedImage(selectedImageUri);
                 textImage.setText("Изображение выбрано");
-                textImage.setTextColor(Color.BLACK);
-                
-                Toast.makeText(this, "Изображение выбрано", Toast.LENGTH_SHORT).show();
-            } catch (Exception e) {
-                Log.e(TAG, "onActivityResult: Ошибка при обработке изображения", e);
-                Toast.makeText(this, "Ошибка при загрузке изображения: " + e.getMessage(), 
-                        Toast.LENGTH_SHORT).show();
             }
         }
-    }
-    
-    // Метод для изменения размера Bitmap
-    private Bitmap resizeBitmap(Bitmap bitmap, int maxSide) {
-        int width = bitmap.getWidth();
-        int height = bitmap.getHeight();
-        
-        if (width <= maxSide && height <= maxSide) {
-            return bitmap; // Нет необходимости менять размер
-        }
-        
-        float ratio = (float) width / height;
-        int newWidth, newHeight;
-        
-        if (width > height) {
-            newWidth = maxSide;
-            newHeight = (int) (maxSide / ratio);
-        } else {
-            newHeight = maxSide;
-            newWidth = (int) (maxSide * ratio);
-        }
-        
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
     }
     
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
-            finish();
+            // Спрашиваем пользователя, хочет ли он отменить редактирование
+            new AlertDialog.Builder(this)
+                .setTitle("Отменить редактирование?")
+                .setMessage("Все несохраненные изменения будут потеряны.")
+                .setPositiveButton("Да", (dialog, which) -> {
+                    dialog.dismiss();
+                    finish();
+                })
+                .setNegativeButton("Нет", (dialog, which) -> {
+                    dialog.dismiss();
+                })
+                .show();
             return true;
         }
         return super.onOptionsItemSelected(item);
-    }
-    
-    // Метод для проверки наличия интернет-соединения
-    private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
-        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
-    }
-    
-    private boolean validateTitle(String title) {
-        if (TextUtils.isEmpty(title) || title.length() < 2) {
-            TextInputLayout titleInputLayout = findViewById(R.id.recipe_title_layout);
-            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setError("Название рецепта не может быть пустым и короче 2 символов");
-            return false;
-        } else if (title.length() > 255) {
-            TextInputLayout titleInputLayout = findViewById(R.id.recipe_title_layout);
-            titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            titleInputLayout.setError("Название рецепта не должно превышать 255 символов");
-            return false;
-        } else {
-            TextInputLayout titleInputLayout = findViewById(R.id.recipe_title_layout);
-            titleInputLayout.setError(null);
-            return true;
-        }
-    }
-    
-    private boolean validateIngredients(String ingredients) {
-        if (TextUtils.isEmpty(ingredients)) {
-            TextInputLayout layout = findViewById(R.id.recipe_ingredients_layout);
-            layout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-            layout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            layout.setError("Список ингредиентов не может быть пустым");
-            return false;
-        } else if (ingredients.length() > 2000) {
-            TextInputLayout layout = findViewById(R.id.recipe_ingredients_layout);
-            layout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-            layout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            layout.setError("Список ингредиентов не может содержать более 2000 символов");
-            return false;
-        } else {
-            TextInputLayout layout = findViewById(R.id.recipe_ingredients_layout);
-            layout.setError(null);
-            return true;
-        }
-    }
-    
-    private boolean validateInstructions(String instructions) {
-        if (TextUtils.isEmpty(instructions)) {
-            TextInputLayout layout = findViewById(R.id.recipe_instructions_layout);
-            layout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-            layout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            layout.setError("Инструкция не может быть пустой");
-            return false;
-        } else if (instructions.length() > 2000) {
-            TextInputLayout layout = findViewById(R.id.recipe_instructions_layout);
-            layout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-            layout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-            layout.setError("Инструкция не может содержать более 2000 символов");
-            return false;
-        } else {
-            TextInputLayout layout = findViewById(R.id.recipe_instructions_layout);
-            layout.setError(null);
-            return true;
-        }
     }
 } 

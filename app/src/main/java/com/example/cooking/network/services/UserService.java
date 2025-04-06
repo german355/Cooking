@@ -21,8 +21,71 @@ public class UserService {
         void onFailure(String errorMessage);
     }
     
+    public interface UserServiceCallback {
+        void onSuccess(ApiResponse response);
+        void onFailure(String errorMessage);
+    }
+    
     public UserService() {
         this.apiService = RetrofitClient.getApiService();
+    }
+    
+    /**
+     * Сохраняет данные пользователя в базе данных
+     * @param userId идентификатор пользователя
+     * @param username имя пользователя
+     * @param email email пользователя
+     * @param permission уровень прав доступа
+     * @param callback колбэк для обработки результата
+     */
+    public void saveUser(String userId, String username, String email, int permission, UserServiceCallback callback) {
+        Log.d(TAG, "Saving user data: userId=" + userId + ", username=" + username + ", email=" + email);
+        
+        // Вызываем метод registerFirebaseUser для сохранения данных
+        registerFirebaseUser(email, username, userId, new UserCallback() {
+            @Override
+            public void onSuccess(ApiResponse response) {
+                callback.onSuccess(response);
+            }
+            
+            @Override
+            public void onFailure(String errorMessage) {
+                callback.onFailure(errorMessage);
+            }
+        });
+    }
+    
+    /**
+     * Обновляет имя пользователя в базе данных
+     * @param userId идентификатор пользователя
+     * @param newName новое имя пользователя
+     * @param callback колбэк для обработки результата
+     */
+    public void updateUserName(String userId, String newName, UserServiceCallback callback) {
+        Log.d(TAG, "Updating user name: userId=" + userId + ", newName=" + newName);
+        
+        // Заглушка для обновления имени пользователя
+        // В реальном приложении здесь будет обращение к API
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.setSuccess(true);
+        mockResponse.setMessage("Имя пользователя успешно обновлено");
+        callback.onSuccess(mockResponse);
+    }
+    
+    /**
+     * Удаляет пользователя из базы данных
+     * @param userId идентификатор пользователя
+     * @param callback колбэк для обработки результата
+     */
+    public void deleteUser(String userId, UserServiceCallback callback) {
+        Log.d(TAG, "Deleting user: userId=" + userId);
+        
+        // Заглушка для удаления пользователя
+        // В реальном приложении здесь будет обращение к API
+        ApiResponse mockResponse = new ApiResponse();
+        mockResponse.setSuccess(true);
+        mockResponse.setMessage("Пользователь успешно удален");
+        callback.onSuccess(mockResponse);
     }
     
     /**

@@ -1,0 +1,470 @@
+import os
+
+from flask import Flask, request, jsonify, url_for, send_from_directory
+import pymysql
+import bcrypt
+from flask_socketio import SocketIO, emit
+from werkzeug.utils import secure_filename
+import time
+from datetime import datetime
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+# Инициализация Firebase Admin
+cred = credentials.Certificate('cooking-81977-firebase-adminsdk-fbsvc-649d1c1ad7.json')
+firebase_admin.initialize_app(cred)
+
+
+app = Flask(__name__)
+
+socketio = SocketIO(app, cors_allowed_origins="*")  # пока что не реализованно
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+
+def hash_password(plain_password):
+    # Генерация соли и хэширование пароля
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(plain_password.encode('utf-8'), salt)
+    return hashed
+
+
+def send_recipe_event(event_type, recipe_id):
+    # Рассылаем всем подписчикам топика "recipes"
+    message = messaging.Message(
+        data={
+            'type':     event_type,   # "recipe_added", "recipe_updated","recipe_deleted"
+            'recipeId': str(recipe_id)
+        },
+        topic='recipes'
+    )
+    try:
+        response = messaging.send(message)
+        print(f"FCM sent: {response}")
+    except Exception as e:
+        print(f"FCM error: {e}")
+
+
+
+# Функция для проверки допустимого расширения файла
+def allowed_file(filename):
+    return '.' in filename and \
+        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# Функция для создания нового подключения к базе данных
+def get_db_connection():
+    return pymysql.connect(
+        host='cdb.veroid.net',  # Адрес сервера базы данных
+        user='u23298_2xL9nWI7Ta',  # Имя пользователя базы данных
+        password='kohpK.S8=2D12hELw!=boPNC',  # Пароль пользователя
+        database='s23298_Samsung_progect',  # Имя базы данных
+        charset='utf8mb4',  # Кодировка
+        cursorclass=pymysql.cursors.DictCursor  # Результаты запросов возвращаются в виде словарей
+    )
+
+
+# Обработчик для главной страницы
+@app.route('/')
+def index():
+    return "Добро пожаловать на сервер!"
+
+
+# Эндпоинт для логина
+@app.route('/login', methods=['POST'])
+def login():
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No JSON data provided'}), 400
+
+        email = data.get('email')
+        firebase_id = data.get('uid')
+
+        if not email:
+            return jsonify({'success': False, 'message': 'Email missing'}), 400
+
+        conn = get_db_connection()
+        with conn.cursor(pymysql.cursors.DictCursor) as cursor:  # Используем DictCursor
+            # Сначала проверяем по Firebase UID, если он предоставлен
+            if firebase_id:
+                sql = "SELECT id, email, name, permission FROM users WHERE uid=%s"
+                cursor.execute(sql, (firebase_id,))
+                result = cursor.fetchone()
+
+                # Если пользователь не найден по UID, но есть email
+                if not result:
+                    # Проверяем по email и обновляем uid если нашли пользователя
+                    sql = "SELECT id, email, name, permission FROM users WHERE email=%s"
+                    cursor.execute(sql, (email,))
+                    result = cursor.fetchone()
+
+                    # Если нашли пользователя по email, обновляем uid
+                    if result:
+                        update_sql = "UPDATE users SET uid = %s WHERE email = %s"
+                        cursor.execute(update_sql, (firebase_id, email))
+                        conn.commit()
+            else:
+                # Если firebase_id не предоставлен, ищем только по email
+                sql = "SELECT id, email, name, permission FROM users WHERE email=%s"
+                cursor.execute(sql, (email,))
+                result = cursor.fetchone()
+
+        if result:
+            conn.close()
+            return jsonify({
+                'success': True,
+                'userId': result['id'],
+                'name': result['name'],
+                'permission': result['permission']
+            }), 200
+        else:
+            conn.close()
+            return jsonify({'success': False, 'message': 'Пользователь не найден'}), 404
+
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+# Эндпоинт для регистрации новых пользователей
+@app.route('/register', methods=['POST'])
+def register():
+    try:
+        data = request.get_json()
+        if not data:
+            print("Registration failed: No JSON data")
+            return jsonify({'success': False, 'message': 'No JSON data provided'}), 400
+
+        email = data.get('email')
+        name = data.get('name')
+        firebase_id = data.get('uid')
+
+        print(f"Attempting to register user: {email}, firebaseId: {firebase_id}")
+
+        if not email:
+            print(f"Registration failed: Missing email")
+            return jsonify({'success': False, 'message': 'Email missing'}), 400
+
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                # Проверяем, существует ли уже пользователь с таким firebase_id
+                if firebase_id:
+                    check_firebase_sql = "SELECT * FROM users WHERE uid=%s"
+                    cursor.execute(check_firebase_sql, (firebase_id,))
+                    if cursor.fetchone() is not None:
+                        conn.close()
+                        print(f"Registration failed: User with firebaseId {firebase_id} already exists")
+                        return jsonify({'success': False, 'message': 'Пользователь с таким Firebase ID уже существует'}), 409
+
+                # Проверяем, существует ли уже пользователь с таким email
+                check_sql = "SELECT * FROM users WHERE email=%s"
+                cursor.execute(check_sql, (email,))
+                if cursor.fetchone() is not None:
+                    conn.close()
+                    print(f"Registration failed: User {email} already exists")
+                    return jsonify({'success': False, 'message': 'Пользователь с таким email уже существует'}), 409
+
+                # Вставляем нового пользователя с firebase_id, если он предоставлен
+                if firebase_id:
+                    insert_sql = "INSERT INTO users (email, name, uid) VALUES (%s, %s, %s)"
+                    cursor.execute(insert_sql, (email, name, firebase_id))
+                else:
+                    insert_sql = "INSERT INTO users (email, name) VALUES (%s, %s)"
+                    cursor.execute(insert_sql, (email, name))
+
+                # Получаем ID только что зарегистрированного пользователя
+                user_id_sql = "SELECT id, permission FROM users WHERE email=%s"
+                cursor.execute(user_id_sql, (email,))
+                user_data = cursor.fetchone()
+
+            conn.commit()
+            conn.close()
+
+            # Возвращаем более полезный ответ с ID пользователя
+            print(f"Registration successful for user: {email}")
+            return jsonify({
+                'success': True,
+                'message': 'Пользователь успешно зарегистрирован',
+                'userId': user_data['id'],
+                'name': name,
+                'permission': user_data['permission']
+            })
+
+        except Exception as e:
+            print(f"Database error during registration for {email}: {str(e)}")
+            return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Registration error: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+@app.route('/addrecipes', methods=['POST'])
+def create_recipe():
+    title = request.form.get('title')
+    ingredients = request.form.get('ingredients')
+    instructions = request.form.get('instructions')
+    user_id = request.form.get('userId')
+    recipe_id = request.form.get('recipeId')
+
+    # Если recipeId отсутствует или равно "0", создаем новый рецепт
+    if not recipe_id or recipe_id == "0":
+        # Проверяем, что все обязательные поля заполнены
+        if not (title and ingredients and instructions and user_id):
+            return jsonify({'success': False, 'message': 'Все поля (title, ingredients, instructions, userId) обязательны'}), 400
+
+        photo_url = None
+        if 'photo' in request.files:
+            photo_file = request.files['photo']
+            if photo_file and allowed_file(photo_file.filename):
+                filename = secure_filename(photo_file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                photo_file.save(file_path)
+                photo_url = url_for('uploaded_file', filename=filename, _external=True)
+            else:
+                return jsonify({'success': False, 'message': 'Неверный формат файла'}), 400
+
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                # Добавляем поле updated_at с текущим временем
+                sql_insert = "INSERT INTO recipes (title, ingredients, instructions, user_id, photo ) VALUES (%s, %s, %s, %s, %s)"
+                cursor.execute(sql_insert, (title, ingredients, instructions, user_id, photo_url))
+                sql_insert = "SELECT id FROM recipes WHERE title = %s AND user_id = %s AND instructions = %s AND ingredients = %s;"
+                cursor.execute(sql_insert, (title,user_id, instructions, ingredients ))
+            conn.commit()
+            conn.close()
+
+            new_id = cursor.lastrowid
+            send_recipe_event('recipe_added', new_id)
+
+            return jsonify({'success': True, 'message': 'Рецепт успешно создан'})
+        except Exception as e:
+            print("Ошибка при создании рецепта:", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+    else:
+        # Если recipeId присутствует, обновляем существующий рецепт
+        if not (title and ingredients and instructions and user_id):
+            return jsonify({'success': False, 'message': 'Все поля (title, ingredients, instructions, userId) обязательны'}), 400
+
+        photo_url = None
+        if 'photo' in request.files:
+            photo_file = request.files['photo']
+            if photo_file and allowed_file(photo_file.filename):
+                filename = secure_filename(photo_file.filename)
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                photo_file.save(file_path)
+                photo_url = url_for('uploaded_file', filename=filename, _external=True)
+            else:
+                return jsonify({'success': False, 'message': 'Неверный формат файла'}), 400
+
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                # Добавляем обновление updated_at
+                if photo_url:
+                    sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s, photo=%s WHERE id=%s AND user_id=%s"
+                    cursor.execute(sql_update, (title, ingredients, instructions, photo_url, recipe_id, user_id))
+                else:
+                    # Если фото не изменено, не обновляем его
+                    sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s  WHERE id=%s AND user_id=%s"
+                    cursor.execute(sql_update, (title, ingredients, instructions, recipe_id, user_id))
+
+                if cursor.rowcount == 0:
+                    conn.rollback()
+                    conn.close()
+                    return jsonify({'success': False, 'message': 'Редактирование не выполнено. Возможно, вы не являетесь создателем рецепта.'}), 403
+            conn.commit()
+            conn.close()
+
+            send_recipe_event('recipe_updated', recipe_id)
+
+            return jsonify({'success': True, 'message': 'Рецепт успешно изменен'})
+        except Exception as e:
+            print("Ошибка при обновлении рецепта:", e)
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+
+
+@app.route('/deliterecipe', methods=['POST'])
+def delete_recipe():
+    data = request.get_json()
+    id = data.get('id')
+    user_id = data.get('userId')
+    permission = data.get('permission')
+
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            if permission == 2:
+                sql_delete = "DELETE FROM recipes WHERE id = %s;"
+                cursor.execute(sql_delete, (id))
+            else:
+                sql_delete = "DELETE FROM recipes WHERE id = %s AND user_id = %s;"
+                cursor.execute(sql_delete, (id, user_id))
+
+            conn.commit()
+            send_recipe_event('recipe_deleted', id)
+
+
+        return jsonify({'success': True, 'message': 'Рецепт удален'})
+
+    except Exception as e:
+        print("Ошибка при удалении рецепта:", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+    finally:
+        if 'conn' in locals() and conn is not None:
+            conn.close()
+
+
+# Эндпоинт для раздачи загруженных файлов (фото рецептов)
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+
+# Эндпоинт для получения всех рецептов
+@app.route('/recipes', methods=['GET'])
+def get_recipes():
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Используем alias "userId" для поля user_id
+            sql = "SELECT id, title, ingredients, instructions, created_at, user_id as userId, photo FROM recipes ORDER BY id DESC"
+            cursor.execute(sql)
+            recipes = cursor.fetchall()
+        conn.close()
+
+        # Конвертируем datetime объекты в строки для JSON
+        for recipe in recipes:
+            if 'created_at' in recipe and recipe['created_at']:
+                recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+        response = {
+            'success': True,
+            'recipes': recipes,
+            'count': len(recipes)
+        }
+        return jsonify(response)
+    except Exception as e:
+        print(f"Ошибка при получении рецептов: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Ошибка сервера: {str(e)}',
+            'recipes': []
+        }), 500
+
+# Эндпоинт для получения одного рецепта по его ID
+@app.route('/recipe/<int:recipe_id>', methods=['GET'])
+def get_recipe(recipe_id):
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            sql = """
+                SELECT 
+                  id, title, ingredients, instructions, 
+                  created_at, 
+                  user_id AS userId, photo 
+                FROM recipes 
+                WHERE id = %s
+            """
+            cursor.execute(sql, (recipe_id,))
+            recipe = cursor.fetchone()
+        conn.close()
+
+        if not recipe:
+            return jsonify({'success': False, 'message': 'Рецепт не найден'}), 404
+
+        # Форматируем даты для JSON
+        if recipe.get('created_at'):
+            recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+        return jsonify({'success': True, 'recipe': recipe}), 200
+
+    except Exception as e:
+        print(f"Ошибка при получении рецепта: {e}")
+        return jsonify({'success': False, 'message': f'Ошибка сервера: {e}'}), 500
+
+
+
+
+# Добавление лайка
+@app.route('/like', methods=['POST'])
+def toggle_like_recipe():
+    try:
+        data = request.get_json()
+        user_id = data.get('userId')
+        recipe_id = data.get('recipeId')
+
+        if not user_id or not recipe_id:
+            return jsonify({'success': False, 'message': 'userId и recipeId обязательны'}), 400
+
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Проверяем, есть ли уже запись в таблице лайков
+            check_sql = "SELECT * FROM user_likes WHERE user_id = %s AND recipe_id = %s"
+            cursor.execute(check_sql, (user_id, recipe_id))
+            existing_like = cursor.fetchone()
+
+            if existing_like:
+                # Если лайк уже есть — удаляем его
+                delete_sql = "DELETE FROM user_likes WHERE user_id = %s AND recipe_id = %s"
+                cursor.execute(delete_sql, (user_id, recipe_id))
+                conn.commit()
+                conn.close()
+                return jsonify({'success': True, 'message': 'Лайк удалён', 'liked': False})
+            else:
+                # Если лайка ещё нет — добавляем
+                insert_sql = "INSERT INTO user_likes (user_id, recipe_id) VALUES (%s, %s)"
+                cursor.execute(insert_sql, (user_id, recipe_id))
+                conn.commit()
+                conn.close()
+                return jsonify({'success': True, 'message': 'Лайк добавлен', 'liked': True})
+
+    except Exception as e:
+        print(f"Ошибка при работе с лайками: {str(e)}")
+        return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
+
+
+# Для получения понравившегося рецепта
+@app.route('/likedrecipes', methods=['GET'])
+def get_liked_recipes():
+    user_id = request.args.get('userId')
+    if not user_id:
+        return jsonify({'success': False, 'message': 'userId не указан'}), 400
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # Выбираем рецепты, присоединив таблицу user_likes по recipe_id
+            sql = """
+                SELECT r.id, r.title, r.ingredients, r.instructions, r.created_at, r.photo, r.user_id as userId
+                FROM recipes r 
+                JOIN user_likes ul ON r.id = ul.recipe_id
+                WHERE ul.user_id = %s
+                ORDER BY r.created_at DESC
+            """
+            cursor.execute(sql, (user_id,))
+            recipes = cursor.fetchall()
+        conn.close()
+
+        # Форматируем поле created_at и updated_at, если они есть
+        for recipe in recipes:
+            if recipe.get('created_at'):
+                recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+
+        return jsonify({'success': True, 'recipes': recipes, 'count': len(recipes)})
+    except Exception as e:
+        print(f"Ошибка при получении лайкнутых рецептов: {str(e)}")
+        return jsonify({'success': False, 'message': f'Ошибка сервера: {str(e)}'}), 500
+
+
+# Запуск сервера
+if __name__ == '__main__':
+    # Запускаем на всех интерфейсах (0.0.0.0) и на порту 10009
+    app.run(host='0.0.0.0', port=10009, debug=True)

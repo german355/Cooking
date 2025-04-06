@@ -7,6 +7,7 @@ import android.net.NetworkInfo;
 import android.util.Log;
 
 import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.config.ServerConfig;
 import com.example.cooking.network.api.RecipeApi;
 import com.example.cooking.network.responses.RecipesResponse;
 import com.google.gson.Gson;
@@ -39,7 +40,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  */
 public class RecipeRepository {
     private static final String TAG = "RecipeRepository";
-    private static final String API_URL = "http://r1.veroid.network:10009";
+    private static final String API_URL = ServerConfig.BASE_API_URL;
     
     // Настройки кэша
     private static final long CACHE_SIZE = 10 * 1024 * 1024; // 10 МБ

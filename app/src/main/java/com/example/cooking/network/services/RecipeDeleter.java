@@ -4,6 +4,7 @@ import android.content.Context;
 import android.os.AsyncTask;
 import android.util.Log;
 
+import com.example.cooking.config.ServerConfig;
 import com.example.cooking.data.repositories.RecipeRepository;
 import org.json.JSONObject;
 import java.io.IOException;
@@ -17,7 +18,7 @@ import okhttp3.Response;
 public class RecipeDeleter {
 
     private static final String TAG = "RecipeDeleter";
-    private static final String API_URL = "r1.veroid.network:10009";
+    private static final String DELETE_ENDPOINT = "/deliterecipe";
     private final OkHttpClient client;
     private final Context context;
 
@@ -73,7 +74,7 @@ public class RecipeDeleter {
                 RequestBody body = RequestBody.create(json.toString(), JSON_TYPE);
 
                 Request request = new Request.Builder()
-                        .url(API_URL + "/deliterecipe")
+                        .url(ServerConfig.getFullUrl(DELETE_ENDPOINT))
                         .post(body)
                         .build();
 
@@ -105,9 +106,24 @@ public class RecipeDeleter {
             if (success) {
                 callback.onDeleteSuccess();
                 RecipeDeleter deleter = deleterRef.get();
-                RecipeRepository repository = new RecipeRepository(deleter.context);
-                repository.clearCache();
-                Log.d("Recipe", "Рецепт был удален");
+                if (deleter != null) {
+                    // Очищаем основной кэш рецептов
+                    RecipeRepository repository = new RecipeRepository(deleter.context);
+                    repository.clearCache();
+                    
+                    // Также очищаем кэш лайкнутых рецептов
+                    // Получаем текущего пользователя из SharedPreferences
+                    com.example.cooking.utils.MySharedPreferences prefs = new com.example.cooking.utils.MySharedPreferences(deleter.context);
+                    String currentUserId = prefs.getString("userId", "0");
+                    
+                    // Очищаем кэш лайкнутых рецептов
+                    com.example.cooking.data.repositories.LikedRecipesRepository likedRepo = 
+                        new com.example.cooking.data.repositories.LikedRecipesRepository(deleter.context);
+                    likedRepo.clearCache(currentUserId);
+                    
+                    Log.d(TAG, "Все кэши очищены после удаления рецепта");
+                }
+                Log.d(TAG, "Рецепт был удален");
             } else {
                 callback.onDeleteFailure(errorMessage);
             }

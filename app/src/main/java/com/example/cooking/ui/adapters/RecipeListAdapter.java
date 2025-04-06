@@ -1,8 +1,8 @@
 package com.example.cooking.ui.adapters;
 
 import android.content.Intent;
-import android.graphics.Color;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -11,9 +11,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
-import androidx.cardview.widget.CardView;
-import androidx.recyclerview.widget.RecyclerView;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.cardview.widget.CardView;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.ListAdapter;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
 import com.example.cooking.R;
@@ -22,37 +24,50 @@ import com.example.cooking.ui.activities.RecipeDetailActivity;
 import com.google.android.material.checkbox.MaterialCheckBox;
 import com.google.android.material.imageview.ShapeableImageView;
 
-import java.util.List;
-import java.util.ArrayList;
-
 /**
- * Адаптер для отображения рецептов в RecyclerView.
- * Управляет отображением карточек рецептов и обработкой нажатий.
+ * Адаптер для отображения рецептов в RecyclerView с использованием DiffUtil.
+ * Обеспечивает плавное обновление списка рецептов.
  */
-public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeViewHolder> {
-    private List<Recipe> recipes;
-    private OnRecipeLikeListener likeListener;
+public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.RecipeViewHolder> {
     
+    private static final String TAG = "RecipeListAdapter";
+    private final OnRecipeLikeListener likeListener;
+
+    // DiffUtil для эффективного обновления RecyclerView
+    private static final DiffUtil.ItemCallback<Recipe> DIFF_CALLBACK = new DiffUtil.ItemCallback<Recipe>() {
+        @Override
+        public boolean areItemsTheSame(@NonNull Recipe oldItem, @NonNull Recipe newItem) {
+            // Проверяем, тот же ли это рецепт по ID
+            return oldItem.getId() == newItem.getId();
+        }
+
+        @Override
+        public boolean areContentsTheSame(@NonNull Recipe oldItem, @NonNull Recipe newItem) {
+            // Проверяем, изменилось ли содержимое рецепта
+            return oldItem.getTitle().equals(newItem.getTitle()) &&
+                   oldItem.isLiked() == newItem.isLiked() &&
+                   (oldItem.getPhoto_url() == null ? newItem.getPhoto_url() == null :
+                    oldItem.getPhoto_url().equals(newItem.getPhoto_url()));
+        }
+    };
+
+    // Интерфейс для обработки нажатий на кнопку "Нравится"
     public interface OnRecipeLikeListener {
         void onRecipeLike(Recipe recipe, boolean isLiked);
     }
 
-    public RecipeAdapter(List<Recipe> recipes) {
-        this.recipes = recipes;
-    }
-    
-    public RecipeAdapter(List<Recipe> recipes, OnRecipeLikeListener likeListener) {
-        this.recipes = recipes;
+    public RecipeListAdapter(OnRecipeLikeListener likeListener) {
+        super(DIFF_CALLBACK);
         this.likeListener = likeListener;
-    }
-    
-    public void setOnRecipeLikeListener(OnRecipeLikeListener listener) {
-        this.likeListener = listener;
     }
 
     /**
-     * Создает новый ViewHolder для карточки рецепта
+     * Получает рецепт по позиции
      */
+    public Recipe getRecipeAt(int position) {
+        return getItem(position);
+    }
+
     @NonNull
     @Override
     public RecipeViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -61,13 +76,11 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
         return new RecipeViewHolder(view);
     }
 
-    /**
-     * Заполняет карточку данными конкретного рецептa
-     *
-     */
     @Override
     public void onBindViewHolder(@NonNull RecipeViewHolder holder, int position) {
-        Recipe recipe = recipes.get(position);
+        Recipe recipe = getItem(position);
+        
+        // Заполняем данные карточки
         holder.titleTextView.setText(recipe.getTitle());
         
         // Загружаем изображение, если оно есть
@@ -89,7 +102,6 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
         holder.favoriteButton.refreshDrawableState();
         
         // Для правильного отображения цветов при первоначальной загрузке
-        // и обеспечения того, что состояние кнопки соответствует состоянию рецепта
         if (recipe.isLiked()) {
             holder.favoriteButton.setButtonTintList(ColorStateList.valueOf(Color.parseColor("#FF0031")));
         } else {
@@ -103,28 +115,21 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
         holder.favoriteButton.setOnClickListener(v -> {
             boolean isChecked = holder.favoriteButton.isChecked();
             
-            // Анимируем изменение состояния кнопки
-            holder.favoriteButton.jumpDrawablesToCurrentState();
-            
-            // Временно отключаем кнопку, чтобы предотвратить многократные нажатия
-            holder.favoriteButton.setEnabled(false);
-            
-            // Обновляем состояние рецепта
-            recipe.setLiked(isChecked);
-            
-            // Показываем информационное сообщение
-            String message = isChecked ? 
-                "Рецепт добавлен в избранное" : 
-                "Рецепт удален из избранного";
-            Toast.makeText(holder.itemView.getContext(), message, Toast.LENGTH_SHORT).show();
-            
-            // Вызываем обратный вызов, если он установлен
+            // Вызываем метод обработки лайка, который проверит авторизацию
             if (likeListener != null) {
+                // Сначала сбрасываем состояние чекбокса, чтобы избежать визуального изменения до проверки авторизации
+                holder.favoriteButton.setChecked(!isChecked);
+                
+                // Временно отключаем кнопку для предотвращения повторных нажатий
+                holder.favoriteButton.setEnabled(false);
+                
+                // Вызываем обратный вызов, где будет проверка авторизации
+                // и только если действие успешно, изменяем визуальное состояние
                 likeListener.onRecipeLike(recipe, isChecked);
+                
+                // Возвращаем активное состояние кнопке с задержкой
+                holder.favoriteButton.postDelayed(() -> holder.favoriteButton.setEnabled(true), 500);
             }
-            
-            // Возвращаем активное состояние кнопке
-            holder.favoriteButton.postDelayed(() -> holder.favoriteButton.setEnabled(true), 500);
         });
         
         // Устанавливаем обработчик нажатий на карточку
@@ -137,11 +142,10 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
             intent.putExtra("Created_at", recipe.getCreated_at());
             intent.putExtra("userId", recipe.getUserId());
             intent.putExtra("photo_url", recipe.getPhoto_url());
-            // Передаем состояние лайка
             intent.putExtra("isLiked", recipe.isLiked());
-            Log.d("Id", recipe.getUserId());
+            
             if (recipe.getPhoto_url() != null) {
-                Log.d("RecipeAdapter", "Photo URL: " + recipe.getPhoto_url());
+                Log.d(TAG, "Photo URL: " + recipe.getPhoto_url());
             }
             
             // Запускаем активность с ожиданием результата
@@ -149,46 +153,8 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
         });
     }
 
-    @Override
-    public int getItemCount() {
-        return recipes.size();
-    }
-
-    public void updateRecipes(List<Recipe> newRecipes) {
-        // Если новый список null, не делаем ничего
-        if (newRecipes == null) {
-            return;
-        }
-        
-        // Полностью заменяем список вместо простого добавления элементов
-        recipes = new ArrayList<>(newRecipes);
-        
-        // Уведомляем адаптер об изменении всего датасета
-        notifyDataSetChanged();
-    }
-
     /**
-     * Возвращает рецепт по указанной позиции
-     * @param position позиция в списке
-     * @return объект рецепта или null, если позиция недопустима
-     */
-    public Recipe getRecipeAt(int position) {
-        if (position >= 0 && position < recipes.size()) {
-            return recipes.get(position);
-        }
-        return null;
-    }
-
-    /**
-     * Возвращает список рецептов
-     * @return текущий список рецептов
-     */
-    public List<Recipe> getRecipes() {
-        return recipes;
-    }
-
-    /**
-     * Внутренний класс для хранения ссылок на элементы карточки
+     * ViewHolder для карточки рецепта
      */
     static class RecipeViewHolder extends RecyclerView.ViewHolder {
         TextView titleTextView;

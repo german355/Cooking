@@ -1,6 +1,8 @@
 package com.example.cooking.ui.fragments;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -11,6 +13,7 @@ import android.view.ViewGroup;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import java.util.ArrayList;
@@ -23,41 +26,35 @@ import com.example.cooking.ui.activities.MainActivity;
 import com.example.cooking.utils.MySharedPreferences;
 import com.example.cooking.R;
 import com.example.cooking.Recipe.Recipe;
-import com.example.cooking.ui.adapters.RecipeAdapter;
+import com.example.cooking.ui.adapters.RecipeListAdapter;
 import com.example.cooking.ui.activities.AddRecipeActivity;
-import com.example.cooking.data.repositories.LikedRecipesRepository;
-import com.example.cooking.data.repositories.RecipeRepository;
 import com.example.cooking.utils.RecipeSearchService;
+import com.example.cooking.ui.viewmodels.HomeViewModel;
 
 import android.widget.SearchView;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.RequestBody;
-import org.json.JSONObject;
-import okhttp3.Request;
-import android.app.Activity;
 
 /**
  * Фрагмент главного экрана.
  * Отображает сетку рецептов в виде карточек.
  */
-public class HomeFragment extends Fragment implements RecipeRepository.RecipesCallback, RecipeAdapter.OnRecipeLikeListener {
+public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipeLikeListener {
     private static final String TAG = "HomeFragment";
     
     private RecyclerView recyclerView;
-    private RecipeAdapter adapter;
-    private RecipeRepository repository;
-    private LikedRecipesRepository likedRecipesRepository;
+    private RecipeListAdapter adapter;
     private SwipeRefreshLayout swipeRefreshLayout;
     private ProgressBar progressBar;
     private TextView emptyView;
     private MySharedPreferences preferences;
     private String userId;
+    private HomeViewModel viewModel;
     
-    private static final String API_URL = "http://r1.veroid.network:10009";
-    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-    private OkHttpClient client = new OkHttpClient();
-
+    // Добавляем поля для автоматического обновления
+    private Handler autoRefreshHandler;
+    private Runnable autoRefreshRunnable;
+    private static final long AUTO_REFRESH_INTERVAL = 30000; // 30 секунд
+    private boolean autoRefreshEnabled = true;
+    
     /**
      * Создает и настраивает представление фрагмента.
      * Инициализирует RecyclerView и загружает рецепты.
@@ -69,6 +66,9 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         // Получаем ID пользователя
         preferences = new MySharedPreferences(requireContext());
         userId = preferences.getString("userId", "0");
+        
+        // Инициализация ViewModel
+        viewModel = new ViewModelProvider(this).get(HomeViewModel.class);
         
         // Инициализация views
         recyclerView = view.findViewById(R.id.recycler_view);
@@ -107,7 +107,7 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         searchView.setOnQueryTextListener(new SearchView.OnQueryTextListener() {
             @Override
             public boolean onQueryTextSubmit(String query) {
-                //performSearch(query);
+                performSearch(query);
                 return true;
             }
 
@@ -122,72 +122,68 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
         // Настройка RecyclerView
         recyclerView.setLayoutManager(new GridLayoutManager(getContext(), 2));
         
-        // Создаем пустой список рецептов
-        List<Recipe> recipes = new ArrayList<>();
-        
-        // Инициализируем адаптер с обработчиком лайков
-        adapter = new RecipeAdapter(recipes, this);
+        // Инициализируем адаптер
+        adapter = new RecipeListAdapter(this);
         recyclerView.setAdapter(adapter);
         
-        // Инициализируем репозитории
-        repository = new RecipeRepository(requireContext());
-        likedRecipesRepository = new LikedRecipesRepository(requireContext());
-        
         // Настраиваем swipe-to-refresh
-        swipeRefreshLayout.setOnRefreshListener(this::loadRecipes);
+        swipeRefreshLayout.setOnRefreshListener(() -> viewModel.refreshRecipes());
         
-        // Загружаем рецепты
-        loadRecipes();
+        // Наблюдаем за данными из ViewModel
+        observeViewModel();
+        
+        // Загружаем данные при первом запуске
+        if (savedInstanceState == null) {
+            viewModel.refreshRecipes();
+        }
+        
+        // Инициализируем обработчик для автоматического обновления
+        autoRefreshHandler = new Handler(Looper.getMainLooper());
+        autoRefreshRunnable = () -> {
+            if (autoRefreshEnabled) {
+                Log.d(TAG, "Выполняется автоматическое обновление рецептов");
+                viewModel.refreshRecipes();
+                // Запланировать следующее обновление
+                autoRefreshHandler.postDelayed(autoRefreshRunnable, AUTO_REFRESH_INTERVAL);
+            }
+        };
+        
+        // Запускаем автоматическое обновление
+        startAutoRefresh();
         
         return view;
     }
     
     /**
-     * Загружает рецепты из репозитория и отмечает избранные
+     * Настраиваем наблюдение за LiveData из ViewModel
      */
-    private void loadRecipes() {
-        Log.d(TAG, "Начинаем загрузку рецептов");
-        showLoading(true);
-        
-        // Загружаем избранные рецепты
-        likedRecipesRepository.getLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
-            @Override
-            public void onRecipesLoaded(List<Recipe> likedRecipes) {
-                // Создаем список ID избранных рецептов
-                final List<Integer> likedIds = new ArrayList<>();
-                for (Recipe recipe : likedRecipes) {
-                    likedIds.add(recipe.getId());
-                    Log.d(TAG, "Лайкнутый рецепт ID: " + recipe.getId());
-                }
-                
-                // Теперь загружаем все рецепты и отмечаем избранные
-                repository.getRecipes(new RecipeRepository.RecipesCallback() {
-                    @Override
-                    public void onRecipesLoaded(List<Recipe> allRecipes) {
-                        // Отмечаем избранные рецепты
-                        for (Recipe recipe : allRecipes) {
-                            recipe.setLiked(likedIds.contains(recipe.getId()));
-                            if (likedIds.contains(recipe.getId())) {
-                                Log.d(TAG, "Отметили рецепт как лайкнутый: " + recipe.getId());
-                            }
-                        }
-                        
-                        // Обновляем UI с полным списком рецептов
-                        HomeFragment.this.onRecipesLoaded(allRecipes);
-                    }
-                    
-                    @Override
-                    public void onDataNotAvailable(String error) {
-                        HomeFragment.this.onDataNotAvailable(error);
-                    }
-                });
+    private void observeViewModel() {
+        // Наблюдаем за списком рецептов
+        viewModel.getRecipes().observe(getViewLifecycleOwner(), recipes -> {
+            if (recipes != null && !recipes.isEmpty()) {
+                adapter.submitList(recipes);
+                showEmptyView(false);
+            } else {
+                showEmptyView(true);
             }
+        });
+        
+        // Наблюдаем за состоянием загрузки
+        viewModel.getIsRefreshing().observe(getViewLifecycleOwner(), isRefreshing -> {
+            swipeRefreshLayout.setRefreshing(isRefreshing);
             
-            @Override
-            public void onDataNotAvailable(String error) {
-                // Если не удалось загрузить избранные, просто загружаем все рецепты
-                Log.e(TAG, "Ошибка загрузки избранных: " + error);
-                repository.getRecipes(HomeFragment.this);
+            // Показываем прогресс бар только при первой загрузке, когда список пустой
+            if (adapter.getItemCount() == 0) {
+                progressBar.setVisibility(isRefreshing ? View.VISIBLE : View.GONE);
+            } else {
+                progressBar.setVisibility(View.GONE);
+            }
+        });
+        
+        // Наблюдаем за сообщениями об ошибках
+        viewModel.getErrorMessage().observe(getViewLifecycleOwner(), error -> {
+            if (error != null && !error.isEmpty()) {
+                showErrorMessage(error);
             }
         });
     }
@@ -199,289 +195,192 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
     public void onRecipeLike(Recipe recipe, boolean isLiked) {
         // Проверяем, авторизован ли пользователь
         if (userId.equals("0")) {
-            Toast.makeText(requireContext(), "Вы должны войти в систему, чтобы добавлять рецепты в избранное", Toast.LENGTH_SHORT).show();
-            // Перенаправляем на экран авторизации
-            if (getActivity() instanceof MainActivity) {
-                ((MainActivity) getActivity()).bottomNavigationView.setSelectedItemId(R.id.nav_profile);
-            }
+            // Показываем Toast-сообщение
+            Toast.makeText(requireContext(), 
+                "Войдите в систему, чтобы добавлять рецепты в избранное", 
+                Toast.LENGTH_SHORT).show();
+            
+            // Для неавторизованного пользователя восстанавливаем исходное состояние чекбокса
+            // Эта часть не нужна, так как мы изменили логику в адаптере
             return;
         }
         
-        // Мгновенно обновляем UI-состояние (без перезагрузки)
-        recipe.setLiked(isLiked);
+        // Только для авторизованных пользователей показываем сообщение об успехе
+        String message = isLiked ? 
+            "Рецепт добавлен в избранное" : 
+            "Рецепт удален из избранного";
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
         
-        // Обновляем только измененный элемент, а не весь список
-        int position = -1;
-        for (int i = 0; i < adapter.getItemCount(); i++) {
-            if (adapter.getRecipeAt(i).getId() == recipe.getId()) {
-                position = i;
-                break;
-            }
-        }
-        
-        if (position != -1) {
-            adapter.notifyItemChanged(position);
-        }
+        // Обновляем состояние в ViewModel (это обновит и локальную базу, и сервер)
+        viewModel.updateLikeStatus(recipe, isLiked);
         
         // Если рецепт был лайкнут, добавляем его в FavoritesFragment
         if (isLiked) {
             Log.d(TAG, "Добавляем рецепт в FavoritesFragment: " + recipe.getId() + " - " + recipe.getTitle());
             FavoritesFragment.addLikedRecipe(recipe);
-        }
-        
-        try {
-            // Создаем JSON для запроса
-            JSONObject jsonObject = new JSONObject();
-            jsonObject.put("userId", userId);
-            jsonObject.put("recipeId", recipe.getId());
-            
-            // Отправляем запрос на сервер без вызова refresh
-            toggleLikeOnServer(jsonObject.toString(), recipe, isLiked);
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка при создании JSON для запроса лайка", e);
-            Toast.makeText(requireContext(), "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        } else {
+            // Если лайк был снят, удаляем рецепт из FavoritesFragment
+            Log.d(TAG, "Удаляем рецепт из FavoritesFragment: " + recipe.getId());
+            FavoritesFragment.removeLikedRecipe(recipe.getId());
         }
     }
     
     /**
-     * Отправляет запрос на сервер для добавления/удаления лайка
+     * Обновляет состояние лайка для указанного рецепта
+     * @param recipeId ID рецепта
+     * @param isLiked новое состояние лайка
      */
-    private void toggleLikeOnServer(String jsonBody, Recipe recipe, boolean isLiked) {
-        // Для лайка не нужен полный индикатор загрузки - это быстрая операция
-        // showLoading(true);
+    public void updateRecipeLikeStatus(int recipeId, boolean isLiked) {
+        Log.d(TAG, "Обновляем состояние лайка для рецепта " + recipeId + " на " + isLiked);
         
-        try {
-            // Создаем тело запроса
-            RequestBody body = RequestBody.create(jsonBody, JSON);
-            
-            // Создаем запрос к API
-            Request request = new Request.Builder()
-                    .url(API_URL + "/like")
-                    .post(body)
-                    .build();
-            
-            // Выполняем запрос асинхронно
-            client.newCall(request).enqueue(new okhttp3.Callback() {
-                @Override
-                public void onFailure(okhttp3.Call call, java.io.IOException e) {
-                    requireActivity().runOnUiThread(() -> {
-                        // showLoading(false);
-                        Toast.makeText(requireContext(), 
-                                "Ошибка сети: " + e.getMessage(), 
-                                Toast.LENGTH_SHORT).show();
-                        Log.e(TAG, e.getMessage());
-                        // Возвращаем состояние кнопки
-                        recipe.setLiked(!isLiked);
-                        adapter.notifyDataSetChanged();
-                    });
-                }
+        // Получаем текущий список рецептов из адаптера
+        List<Recipe> currentRecipes = adapter.getCurrentList();
+        
+        // Создаем новый список для обновления
+        List<Recipe> updatedRecipes = new ArrayList<>();
+        
+        // Обновляем состояние лайка для нужного рецепта
+        for (Recipe recipe : currentRecipes) {
+            if (recipe.getId() == recipeId) {
+                // Создаем копию рецепта с обновленным состоянием лайка
+                Recipe updatedRecipe = new Recipe();
+                updatedRecipe.setId(recipe.getId());
+                updatedRecipe.setTitle(recipe.getTitle());
+                updatedRecipe.setIngredients(recipe.getIngredients());
+                updatedRecipe.setInstructions(recipe.getInstructions());
+                updatedRecipe.setPhoto_url(recipe.getPhoto_url());
+                updatedRecipe.setCreated_at(recipe.getCreated_at());
+                updatedRecipe.setUserId(recipe.getUserId());
+                updatedRecipe.setLiked(isLiked);
                 
-                @Override
-                public void onResponse(okhttp3.Call call, okhttp3.Response response) throws java.io.IOException {
-                    final boolean success = response.isSuccessful();
-                    requireActivity().runOnUiThread(() -> {
-                        // showLoading(false);
-                        if (success) {
-                            // Сообщение в зависимости от статуса лайка
-                            String message = isLiked ? 
-                                    "Рецепт добавлен в избранное" : 
-                                    "Рецепт удален из избранного";
-                            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
-                        } else {
-                            // Если ошибка, возвращаем состояние кнопки
-                            recipe.setLiked(!isLiked);
-                            adapter.notifyDataSetChanged();
-                            Toast.makeText(requireContext(), 
-                                    "Ошибка сервера: " + response.code(), 
-                                    Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
+                updatedRecipes.add(updatedRecipe);
+                Log.d(TAG, "Найден рецепт " + recipeId + ", обновлено состояние лайка на " + isLiked);
+            } else {
+                updatedRecipes.add(recipe);
+            }
+        }
+        
+        // Обновляем список в адаптере
+        if (isAdded()) {
+            requireActivity().runOnUiThread(() -> {
+                adapter.submitList(updatedRecipes);
+                Log.d(TAG, "Список рецептов обновлен в UI");
             });
-        } catch (Exception e) {
-            // showLoading(false);
-            Log.e(TAG, "Ошибка при отправке запроса лайка", e);
-            Toast.makeText(requireContext(), "Ошибка: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-            // Возвращаем состояние кнопки
-            recipe.setLiked(!isLiked);
-            adapter.notifyDataSetChanged();
-        }
-    }
-    
-    /**
-     * Легкий индикатор загрузки, не скрывающий основной контент.
-     * Используется для операций, не требующих перезагрузки всего списка.
-     */
-    private void showLightLoading(boolean show) {
-        if (swipeRefreshLayout.isRefreshing()) {
-            if (!show) {
-                swipeRefreshLayout.setRefreshing(false);
-            }
-        } else {
-            progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
-        }
-        // В отличие от showLoading, мы не скрываем recyclerView и emptyView
-    }
-    
-    /**
-     * Вызывается, когда рецепты успешно загружены.
-     */
-    @Override
-    public void onRecipesLoaded(List<Recipe> recipes) {
-        Log.d(TAG, "Рецепты загружены, количество: " + recipes.size());
-        showLoading(false);
-        
-        if (recipes.isEmpty()) {
-            // Показываем сообщение о пустом списке рецептов
-            emptyView.setText("Нет доступных рецептов. Добавьте первый рецепт!");
-            showEmptyView(true);
-        } else {
-            // Обновляем список рецептов
-            adapter.updateRecipes(recipes);
-            showEmptyView(false);
-        }
-    }
-    
-    /**
-     * Вызывается при ошибке загрузки рецептов.
-     */
-    @Override
-    public void onDataNotAvailable(String error) {
-        Log.e(TAG, "Error loading recipes: " + error);
-        showLoading(false);
-        
-        // Показываем сообщение об ошибке
-        emptyView.setText("Ошибка загрузки рецептов: " + error + "\nПопробуйте позже или добавьте рецепт");
-        showEmptyView(true);
-        
-        // Показываем Toast с ошибкой
-        if (getContext() != null) {
-            Toast.makeText(getContext(), "Ошибка: " + error, Toast.LENGTH_LONG).show();
-        }
-    }
-    
-    /**
-     * Управляет отображением индикатора загрузки.
-     */
-    private void showLoading(boolean show) {
-        if (swipeRefreshLayout.isRefreshing()) {
-            if (!show) {
-                swipeRefreshLayout.setRefreshing(false);
-            }
-        } else {
-            progressBar.setVisibility(show ? View.VISIBLE : View.GONE);
         }
         
-        if (show) {
-            recyclerView.setVisibility(View.GONE);
-            emptyView.setVisibility(View.GONE);
-        } else {
-            recyclerView.setVisibility(View.VISIBLE);
+        // Обновляем состояние в локальной базе данных
+        if (recipeId > 0) {
+            viewModel.updateLocalLikeStatus(recipeId, isLiked);
         }
     }
     
     /**
-     * Управляет отображением сообщения о пустом списке.
+     * Показывает/скрывает сообщение о пустом списке
      */
     private void showEmptyView(boolean show) {
         emptyView.setVisibility(show ? View.VISIBLE : View.GONE);
         recyclerView.setVisibility(show ? View.GONE : View.VISIBLE);
-        
-        if (show && emptyView.getText().toString().isEmpty()) {
-            emptyView.setText(R.string.no_recipes_available);
-        }
     }
-
+    
+    /**
+     * Настройка меню в Action Bar
+     */
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
-        inflater.inflate(R.menu.menu_recipes, menu);
+        inflater.inflate(R.menu.main_menu, menu);
         super.onCreateOptionsMenu(menu, inflater);
     }
-
+    
+    /**
+     * Обработка нажатий на пункты меню
+     */
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.action_add_recipe) {
+        if (item.getItemId() == R.id.action_add) {
+            // Проверяем, авторизован ли пользователь
+            if (userId.equals("0")) {
+                Toast.makeText(requireContext(), "Вы должны войти в систему, чтобы добавлять рецепты", Toast.LENGTH_SHORT).show();
+                // Перенаправляем на экран авторизации
+                if (getActivity() instanceof MainActivity) {
+                    ((MainActivity) getActivity()).bottomNavigationView.setSelectedItemId(R.id.nav_profile);
+                }
+                return true;
+            }
+            
+            // Запускаем активность для добавления рецепта
             Intent intent = new Intent(getActivity(), AddRecipeActivity.class);
-            startActivity(intent);
-            return true;
-        } else if (item.getItemId() == R.id.action_refresh) {
-            refreshFromServer();
+            startActivityForResult(intent, 100);
             return true;
         }
         return super.onOptionsItemSelected(item);
     }
-
+    
+    /**
+     * Включаем меню в Action Bar
+     */
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setHasOptionsMenu(true); // Важно для добавления меню во фрагмент
+        setHasOptionsMenu(true);
     }
-
+    
+    /**
+     * Обновляем данные при возвращении к фрагменту
+     */
     @Override
     public void onResume() {
         super.onResume();
-        // Всегда обновляем список рецептов при возвращении на экран
-        // для синхронизации состояния лайков между активностями
-        loadRecipes();
+        // При возвращении к фрагменту запускаем автоматическое обновление
+        startAutoRefresh();
+        
+        // При возвращении проверяем актуальность данных
+        if (adapter.getItemCount() == 0) {
+            viewModel.refreshRecipes();
+        }
     }
-
+    
     /**
-     * Выполняет поиск рецептов по заданному запросу
-     * @param query текст запроса
+     * Останавливает автоматическое обновление рецептов при уходе с фрагмента
+     */
+    @Override
+    public void onPause() {
+        super.onPause();
+        // При уходе с фрагмента останавливаем автоматическое обновление
+        stopAutoRefresh();
+    }
+    
+    /**
+     * Выполняет поиск рецептов
      */
     public void performSearch(String query) {
-        Log.d(TAG, "Выполняется поиск: " + query);
-        showLoading(true);
-        
-        // Проверяем, что репозиторий инициализирован
-        if (repository == null) {
-            Log.e(TAG, "Ошибка: репозиторий не инициализирован");
-            showErrorMessage("Внутренняя ошибка приложения. Пожалуйста, перезапустите.");
-            return;
-        }
-        
-        // Создаем сервис поиска
-        RecipeSearchService searchService = new RecipeSearchService(repository);
-        
-        try {
-            // Выполняем поиск по заголовку и ингредиентам
-            searchService.searchByTitleAndIngredients(query, new RecipeSearchService.SearchCallback() {
-                @Override
-                public void onSearchResults(List<Recipe> recipes) {
-                    if (isAdded()) {
-                        requireActivity().runOnUiThread(() -> {
-                            showLoading(false);
-                            if (recipes == null || recipes.isEmpty()) {
-                                showEmptyView(true);
-                                emptyView.setText(getString(R.string.no_search_results, query));
-                            } else {
-                                showEmptyView(false);
-                                adapter.updateRecipes(recipes);
-                                Log.d(TAG, "Найдено рецептов: " + recipes.size());
-                            }
-                        });
-                    }
-                }
-
-                @Override
-                public void onSearchError(String error) {
-                    Log.e(TAG, "Ошибка поиска: " + error);
-                    if (isAdded()) {
-                        requireActivity().runOnUiThread(() -> {
-                            showLoading(false);
-                            showErrorMessage("Ошибка поиска: " + error);
-                        });
-                    }
+        if (query == null || query.trim().isEmpty()) {
+            // Если запрос пустой, показываем все рецепты
+            viewModel.getRecipes().removeObservers(getViewLifecycleOwner());
+            viewModel.getRecipes().observe(getViewLifecycleOwner(), recipes -> {
+                if (recipes != null) {
+                    adapter.submitList(recipes);
+                    showEmptyView(recipes.isEmpty());
                 }
             });
-        } catch (Exception e) {
-            Log.e(TAG, "Неожиданная ошибка при поиске: " + e.getMessage(), e);
-            if (isAdded()) {
-                requireActivity().runOnUiThread(() -> {
-                    showLoading(false);
-                    showErrorMessage("Неожиданная ошибка при поиске: " + e.getMessage());
-                });
-            }
+        } else {
+            // Иначе выполняем поиск
+            RecipeSearchService searchService = new RecipeSearchService(requireContext());
+            searchService.searchRecipes(query.trim(), new RecipeSearchService.SearchCallback() {
+                @Override
+                public void onSearchResults(List<Recipe> recipes) {
+                    if (recipes != null) {
+                        adapter.submitList(recipes);
+                        showEmptyView(recipes.isEmpty());
+                    } else {
+                        showEmptyView(true);
+                    }
+                }
+                
+                @Override
+                public void onSearchError(String error) {
+                    showErrorMessage("Ошибка поиска: " + error);
+                }
+            });
         }
     }
     
@@ -489,48 +388,89 @@ public class HomeFragment extends Fragment implements RecipeRepository.RecipesCa
      * Показывает сообщение об ошибке
      */
     private void showErrorMessage(String message) {
-        showEmptyView(true);
-        emptyView.setText(message);
-        Toast.makeText(getContext(), message, Toast.LENGTH_LONG).show();
-    }
-
-    /**
-     * Принудительно обновляет данные с сервера, очищая кэш
-     */
-    private void refreshFromServer() {
-        if (isAdded()) {
-            Toast.makeText(getContext(), "Обновление данных с сервера...", Toast.LENGTH_SHORT).show();
+        if (getContext() != null) {
+            Toast.makeText(getContext(), message, Toast.LENGTH_SHORT).show();
         }
-        
-        Log.d(TAG, "Принудительное обновление с сервера");
-        showLoading(true);
-        
-        repository.getRecipes(this);
     }
-
+    
+    /**
+     * Обрабатывает результат запуска активности
+     */
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         
-        if (requestCode == 100 && resultCode == Activity.RESULT_OK && data != null) {
-            // Получаем ID рецепта и новое состояние лайка
-            int recipeId = data.getIntExtra("recipe_id", -1);
-            boolean isLiked = data.getBooleanExtra("isLiked", false);
-            
-            if (recipeId != -1) {
-                Log.d(TAG, "Получен результат: рецепт ID " + recipeId + ", лайкнут: " + isLiked);
+        // Обработка результата от AddRecipeActivity
+        if (requestCode == 100 && resultCode == getActivity().RESULT_OK) {
+            // Рецепт был добавлен, обновляем список
+            viewModel.refreshRecipes();
+        }
+        // Обработка результата от RecipeDetailActivity
+        else if (requestCode == 200 && resultCode == getActivity().RESULT_OK) {
+            // Проверяем, был ли рецепт удален
+            if (data != null && data.getBooleanExtra("recipe_deleted", false)) {
+                int deletedRecipeId = data.getIntExtra("recipe_id", -1);
+                Log.d(TAG, "Получен результат от RecipeDetailActivity, рецепт был удален: " + deletedRecipeId);
                 
-                // Обновляем состояние конкретного рецепта в списке
-                for (int i = 0; i < adapter.getItemCount(); i++) {
-                    Recipe recipe = adapter.getRecipeAt(i);
-                    if (recipe != null && recipe.getId() == recipeId) {
-                        Log.d(TAG, "Обновляем состояние лайка для рецепта " + recipeId);
-                        recipe.setLiked(isLiked);
-                        adapter.notifyItemChanged(i);
-                        break;
+                // Если ID рецепта указан, обновляем UI немедленно
+                if (deletedRecipeId != -1) {
+                    // Получаем текущий список и удаляем рецепт
+                    List<Recipe> currentList = adapter.getCurrentList();
+                    List<Recipe> updatedList = new ArrayList<>(currentList);
+                    
+                    // Удаляем рецепт с указанным ID
+                    updatedList.removeIf(recipe -> recipe.getId() == deletedRecipeId);
+                    
+                    // Обновляем UI
+                    if (isAdded()) {
+                        requireActivity().runOnUiThread(() -> {
+                            adapter.submitList(updatedList);
+                            Log.d(TAG, "Список рецептов обновлен после удаления: " + deletedRecipeId);
+                            showEmptyView(updatedList.isEmpty());
+                        });
                     }
                 }
+            } else {
+                // Рецепт был отредактирован, обновляем список
+                Log.d(TAG, "Получен результат от RecipeDetailActivity, обновляем список рецептов");
+                viewModel.refreshRecipes();
             }
         }
+    }
+    
+    /**
+     * Обновляет список рецептов.
+     * Метод добавлен для совместимости с обновленным MainActivity.
+     */
+    public void refreshRecipes() {
+        refreshData();
+    }
+    
+    /**
+     * Обновляет данные во фрагменте, запрашивая свежий список рецептов.
+     */
+    public void refreshData() {
+        // Запускаем обновление данных через ViewModel
+        if (viewModel != null) {
+            viewModel.refreshRecipes();
+        }
+    }
+    
+    /**
+     * Запускает автоматическое обновление рецептов
+     */
+    private void startAutoRefresh() {
+        if (autoRefreshEnabled) {
+            Log.d(TAG, "Запущено автоматическое обновление рецептов");
+            autoRefreshHandler.postDelayed(autoRefreshRunnable, AUTO_REFRESH_INTERVAL);
+        }
+    }
+    
+    /**
+     * Останавливает автоматическое обновление рецептов
+     */
+    private void stopAutoRefresh() {
+        Log.d(TAG, "Остановлено автоматическое обновление рецептов");
+        autoRefreshHandler.removeCallbacks(autoRefreshRunnable);
     }
 }

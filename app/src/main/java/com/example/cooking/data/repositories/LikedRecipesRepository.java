@@ -5,6 +5,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.config.ServerConfig;
 import com.example.cooking.network.api.LikedRecipesApi;
 import com.example.cooking.network.responses.RecipesResponse;
 import com.google.gson.Gson;
@@ -34,7 +35,7 @@ public class LikedRecipesRepository {
     private static final String LAST_UPDATE_TIME_KEY = "liked_recipes_last_update_time";
     private static final long CACHE_EXPIRATION_TIME = 30 * 60 * 100; // 3 min
     private static final String PREF_NAME = "liked_recipe_cache";
-    private static final String API_URL = "http://r1.veroid.network:10009";
+    private static final String API_URL = ServerConfig.BASE_API_URL;
     
     private final Context context;
     private final LikedRecipesApi likedRecipesApi;
@@ -170,6 +171,43 @@ public class LikedRecipesRepository {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         long lastUpdateTime = prefs.getLong(LAST_UPDATE_TIME_KEY + "_" + userId, 0);
         return System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+    }
+    
+    /**
+     * Очищает кэш избранных рецептов для указанного пользователя
+     */
+    public void clearCache(String userId) {
+        SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.remove(LIKED_RECIPES_CACHE_KEY + "_" + userId);
+        editor.remove(LAST_UPDATE_TIME_KEY + "_" + userId);
+        editor.apply();
+        Log.d(TAG, "Кэш избранных рецептов очищен для пользователя: " + userId);
+    }
+    
+    /**
+     * Обновляет статус лайка для рецепта
+     * @param recipeId ID рецепта
+     * @param userId ID пользователя
+     * @param isLiked новый статус лайка
+     */
+    public void updateLikeStatus(int recipeId, String userId, boolean isLiked) {
+        try {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put("recipeId", recipeId);
+            jsonObject.put("userId", userId);
+            
+            Log.d(TAG, "Отправка запроса на обновление статуса лайка: recipeId=" + recipeId + ", userId=" + userId + ", isLiked=" + isLiked);
+            
+            // Очищаем кэш, чтобы обеспечить актуальность данных при следующей загрузке
+            clearCache(userId);
+            
+            // Здесь может быть вызов API для обновления статуса лайка на сервере
+            // Это заглушка, поскольку в текущей реализации этот метод вызывается из других мест
+            Log.d(TAG, "Статус лайка обновлен: " + recipeId + ", новый статус: " + isLiked);
+        } catch (Exception e) {
+            Log.e(TAG, "Ошибка при обновлении статуса лайка", e);
+        }
     }
     
     /**

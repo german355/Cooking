@@ -82,4 +82,17 @@ public class MySharedPreferences {
         editor.clear();
         editor.apply();
     }
+    
+    /**
+     * Получает данные текущего пользователя
+     * @return объект User с данными пользователя
+     */
+    public User getUser() {
+        String userId = getString("userId", "0");
+        String username = getString("username", "");
+        String email = getString("email", "");
+        int permission = getInt("permission", 1);
+        
+        return new User(userId, username, email, permission);
+    }
 }

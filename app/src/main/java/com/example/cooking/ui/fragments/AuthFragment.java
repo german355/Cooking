@@ -9,21 +9,21 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.lifecycle.ViewModelProvider;
 
-import com.example.cooking.FireBase.AuthCallback;
-import com.example.cooking.FireBase.FirebaseAuthManager;
-import com.example.cooking.utils.MySharedPreferences;
 import com.example.cooking.R;
+import com.example.cooking.auth.FirebaseAuthManager;
 import com.example.cooking.ui.activities.Regist;
-import com.example.cooking.data.models.ApiResponse;
-import com.example.cooking.network.services.UserService;
+import com.example.cooking.ui.viewmodels.AuthViewModel;
+import com.example.cooking.ui.viewmodels.MainViewModel;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
-import com.google.firebase.auth.FirebaseUser;
 
 /**
  * Фрагмент авторизации, который показывается вместо ProfileFragment, 
@@ -31,8 +31,8 @@ import com.google.firebase.auth.FirebaseUser;
  */
 public class AuthFragment extends Fragment {
     private static final String TAG = "AuthFragment";
-    private static final int RC_SIGN_IN = 9001;
-
+    private static final int RC_SIGN_IN = FirebaseAuthManager.RC_SIGN_IN;
+    
     private TextInputEditText emailEditText;
     private TextInputEditText passwordEditText;
     private TextInputLayout emailInputLayout;
@@ -40,13 +40,17 @@ public class AuthFragment extends Fragment {
     private Button loginButton;
     private Button googleLoginButton;
     private TextView registerTextView;
-    private FirebaseAuthManager firebaseAuthManager;
-    private MySharedPreferences preferences;
+    private ProgressBar progressBar;
+    
+    private AuthViewModel viewModel;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         View view = inflater.inflate(R.layout.fragment_auth, container, false);
 
+        // Инициализация ViewModel
+        viewModel = new ViewModelProvider(this).get(AuthViewModel.class);
+        
         // Инициализация UI элементов
         emailEditText = view.findViewById(R.id.email_edit_text);
         passwordEditText = view.findViewById(R.id.password_edit_text);
@@ -55,27 +59,58 @@ public class AuthFragment extends Fragment {
         loginButton = view.findViewById(R.id.login_button);
         googleLoginButton = view.findViewById(R.id.google_login_button);
         registerTextView = view.findViewById(R.id.register_text_view);
-
-        // Инициализация Firebase Auth Manager
-        firebaseAuthManager = FirebaseAuthManager.getInstance();
-        preferences = new MySharedPreferences(requireContext());
-
-        // Инициализация Google Sign In
-        String webClientId = getString(R.string.default_web_client_id);
-        firebaseAuthManager.initGoogleSignIn(requireContext(), webClientId);
-
+        progressBar = view.findViewById(R.id.login_progress_bar);
+        
         // Настройка обработчиков ввода
         setupTextWatchers();
-
+        
         // Настройка обработчиков нажатий
-        loginButton.setOnClickListener(v -> attemptLogin());
-        googleLoginButton.setOnClickListener(v -> signInWithGoogle());
-        registerTextView.setOnClickListener(v -> {
-            Intent intent = new Intent(requireActivity(), Regist.class);
-            startActivity(intent);
-        });
+        setupClickListeners();
+        
+        // Настройка наблюдателей LiveData
+        setupObservers();
+        
+        // Инициализация Google Sign-In
+        String webClientId = getString(R.string.default_web_client_id);
+        viewModel.initGoogleSignIn(webClientId);
 
         return view;
+    }
+    
+    private void setupObservers() {
+        // Наблюдатель для состояния загрузки
+        viewModel.getIsLoading().observe(getViewLifecycleOwner(), isLoading -> {
+            progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
+            loginButton.setEnabled(!isLoading);
+            googleLoginButton.setEnabled(!isLoading);
+            
+            if (isLoading) {
+                loginButton.setText("Входим...");
+            } else {
+                loginButton.setText("Войти");
+            }
+        });
+        
+        // Наблюдатель для сообщений об ошибках
+        viewModel.getErrorMessage().observe(getViewLifecycleOwner(), errorMessage -> {
+            if (errorMessage != null && !errorMessage.isEmpty()) {
+                //Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show();
+                viewModel.clearErrorMessage();
+            }
+        });
+        
+        // Наблюдатель для состояния аутентификации
+        viewModel.getIsAuthenticated().observe(getViewLifecycleOwner(), isAuthenticated -> {
+            if (isAuthenticated) {
+                Log.d(TAG, "Пользователь успешно авторизовался, обновляем MainViewModel");
+                // Получаем ViewModel активности
+                MainViewModel mainViewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
+                // Обновляем состояние авторизации в MainViewModel, что автоматически обновит UI
+                mainViewModel.checkAuthState();
+                
+                Toast.makeText(requireContext(), "Вход выполнен успешно", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void setupTextWatchers() {
@@ -89,7 +124,8 @@ public class AuthFragment extends Fragment {
 
             @Override
             public void afterTextChanged(Editable s) {
-                if (!validateEmail(s.toString())) {
+                boolean isEmailValid = viewModel.validateEmail(s.toString());
+                if (!isEmailValid) {
                     emailInputLayout.setError("Введите корректный email");
                 } else {
                     emailInputLayout.setError(null);
@@ -107,7 +143,8 @@ public class AuthFragment extends Fragment {
 
             @Override
             public void afterTextChanged(Editable s) {
-                if (!validatePassword(s.toString())) {
+                boolean isPasswordValid = viewModel.validatePassword(s.toString());
+                if (!isPasswordValid) {
                     passwordInputLayout.setError("Пароль должен содержать не менее 6 символов");
                 } else {
                     passwordInputLayout.setError(null);
@@ -115,181 +152,43 @@ public class AuthFragment extends Fragment {
             }
         });
     }
-
-    private void attemptLogin() {
-        String email = emailEditText.getText().toString().trim();
-        String password = passwordEditText.getText().toString();
-
-        if (!validateEmail(email) || !validatePassword(password)) {
-            return;
-        }
-
-        firebaseAuthManager.signInWithEmailAndPassword(email, password, new AuthCallback() {
-            @Override
-            public void onSuccess(FirebaseUser user) {
-                handleFirebaseAuthSuccess(user);
-            }
-
-            @Override
-            public void onError(Exception exception) {
-                String errorMessage = "Ошибка при входе: " + exception.getMessage();
-                Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show();
-                Log.e(TAG, errorMessage, exception);
+    
+    private void setupClickListeners() {
+        // Обработчик нажатия кнопки входа
+        loginButton.setOnClickListener(v -> {
+            String email = emailEditText.getText().toString().trim();
+            String password = passwordEditText.getText().toString();
+            
+            if (viewModel.validateAllLoginInputs(email, password)) {
+                viewModel.signInWithEmailPassword(email, password);
             }
         });
-    }
-
-    private boolean validateEmail(String email) {
-        if (email.isEmpty()) {
-            return false;
-        }
-
-        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private boolean validatePassword(String password) {
-        if (password.isEmpty()) {
-            return false;
-        }
-
-        if (password.length() < 6) {
-            return false;
-        }
-
-        return true;
-    }
-
-    private void signInWithGoogle() {
-        // Проверяем, прикреплен ли фрагмент к активности
-        if (!isAdded()) {
-            Log.e(TAG, "Попытка авторизации через Google, когда фрагмент не прикреплен к активности");
-            return;
-        }
         
-        try {
-            firebaseAuthManager.signInWithGoogle(requireActivity());
-        } catch (IllegalStateException e) {
-            // Если Google Sign In не был инициализирован, инициализируем его и пробуем снова
-            Log.w(TAG, "Google Sign In не был инициализирован, повторная инициализация");
-            
+        // Обработчик нажатия кнопки входа через Google
+        googleLoginButton.setOnClickListener(v -> {
             try {
-                String webClientId = getString(R.string.default_web_client_id);
-                firebaseAuthManager.initGoogleSignIn(requireContext(), webClientId);
-                firebaseAuthManager.signInWithGoogle(requireActivity());
-            } catch (Exception ex) {
-                Log.e(TAG, "Ошибка при инициализации Google Sign In", ex);
-                
-                if (isAdded()) {
-                    try {
-                        Toast.makeText(requireContext(), "Ошибка инициализации входа через Google", Toast.LENGTH_LONG).show();
-                    } catch (Exception toastEx) {
-                        Log.e(TAG, "Ошибка при показе Toast", toastEx);
-                    }
-                }
-            }
-        }
-    }
-
-    private void handleFirebaseAuthSuccess(FirebaseUser user) {
-        if (user != null) {
-            String email = user.getEmail();
-            String firebaseId = user.getUid();
-
-            UserService userService = new UserService();
-            userService.loginFirebaseUser(email, firebaseId, new UserService.UserCallback() {
-                @Override
-                public void onSuccess(ApiResponse response) {
-                    saveUserDataAndRedirect(user, response);
-                }
-
-                @Override
-                public void onFailure(String errorMessage) {
-                    Log.e(TAG, "Ошибка при входе: " + errorMessage);
-                    
-                    // Проверяем, прикреплен ли фрагмент к активности
-                    if (isAdded()) {
-                        try {
-                            Toast.makeText(requireContext(), "Ошибка при входе: " + errorMessage, Toast.LENGTH_LONG).show();
-                        } catch (Exception e) {
-                            Log.e(TAG, "Ошибка при показе Toast", e);
-                        }
-                    }
-                    
-                    // Выход из Firebase в любом случае
-                    firebaseAuthManager.signOut();
-                }
-            });
-        }
-    }
-
-    private void saveUserDataAndRedirect(FirebaseUser user, ApiResponse response) {
-        // Сохраняем данные пользователя
-        preferences.putString("userId", response.getUserId());
-        preferences.putString("userName", user.getDisplayName() != null ? user.getDisplayName() : "Пользователь");
-        preferences.putInt("permission", response.getPermission());
-        preferences.putString("userEmail", user.getEmail());
-        preferences.putString("firebaseId", user.getUid());
-
-        // Проверяем, прикреплен ли фрагмент к активности перед вызовом UI-методов
-        if (isAdded()) {
-            try {
-                // Обновляем UI - заменяем текущий фрагмент на ProfileFragment
-                requireActivity().getSupportFragmentManager().beginTransaction()
-                        .replace(R.id.fragment_container, new ProfileFragment())
-                        .commit();
-
-                Toast.makeText(requireContext(), "Вход выполнен успешно", Toast.LENGTH_SHORT).show();
+                viewModel.signInWithGoogle(requireActivity());
             } catch (Exception e) {
-                Log.e(TAG, "Ошибка при переходе на ProfileFragment", e);
+                Log.e(TAG, "Ошибка при запуске Google Sign-In: " + e.getMessage());
+                Toast.makeText(requireContext(), "Ошибка при входе через Google: " + e.getMessage(), 
+                        Toast.LENGTH_SHORT).show();
             }
-        } else {
-            Log.d(TAG, "Фрагмент не прикреплен к активности, пропускаем обновление UI");
-            // Так как фрагмент не прикреплен, мы не можем обновить UI,
-            // но данные пользователя уже сохранены, поэтому при следующем запуске
-            // приложение определит, что пользователь авторизован
-        }
+        });
+        
+        // Обработчик нажатия текста регистрации
+        registerTextView.setOnClickListener(v -> {
+            Intent intent = new Intent(requireActivity(), Regist.class);
+            startActivity(intent);
+        });
     }
-
+    
     @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-
-        Log.d(TAG, "onActivityResult: requestCode=" + requestCode + 
-                  ", resultCode=" + resultCode + 
-                  ", data=" + (data != null ? "не null" : "null") +
-                  ", ожидаемый RC_SIGN_IN=" + RC_SIGN_IN);
-
+        
+        // Обработка результата входа через Google
         if (requestCode == RC_SIGN_IN) {
-            Log.d(TAG, "Получен результат для Google Sign In, передаю в FirebaseAuthManager");
-            firebaseAuthManager.handleGoogleSignInResult(data, new AuthCallback() {
-                @Override
-                public void onSuccess(FirebaseUser user) {
-                    Log.d(TAG, "Google Sign In успешно, пользователь: " + 
-                              (user != null ? user.getEmail() : "null"));
-                    handleFirebaseAuthSuccess(user);
-                }
-
-                @Override
-                public void onError(Exception exception) {
-                    String errorMessage = "Не удалось войти через Google: " + exception.getMessage();
-                    Log.e(TAG, errorMessage, exception);
-                    
-                    // Проверяем, прикреплен ли фрагмент к активности
-                    if (isAdded()) {
-                        try {
-                            Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show();
-                        } catch (Exception e) {
-                            Log.e(TAG, "Ошибка при показе Toast", e);
-                        }
-                    }
-                }
-            });
-        } else {
-            Log.d(TAG, "Получен неизвестный requestCode: " + requestCode);
+            viewModel.handleGoogleSignInResult(requestCode, resultCode, data);
         }
     }
 } 
