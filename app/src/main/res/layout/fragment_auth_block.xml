@@ -31,12 +31,10 @@
 
                 <!-- Иконка шефского колпака (основная) -->
                 <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:src="@drawable/ic_food_placeholder"
-                    android:scaleType="fitCenter"
-                    android:tint="#FFEB3B"
-                    android:contentDescription="Шефский колпак" />
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:src="@drawable/_7f63c25c6dca70001c9a915_tovector_result"
+                        android:scaleType="fitCenter"/>
 
                 <!-- Иконка лупы (дополнительная) -->
 
