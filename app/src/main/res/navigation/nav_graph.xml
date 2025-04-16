@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/nav_home">
+
+    <!-- Главный экран -->
+    <fragment
+        android:id="@+id/nav_home"
+        android:name="com.example.cooking.ui.fragments.HomeFragment"
+        android:label="Главная"
+        tools:layout="@layout/fragment_home" />
+
+    <!-- Избранное -->
+    <fragment
+        android:id="@+id/nav_favorites"
+        android:name="com.example.cooking.ui.fragments.FavoritesFragment"
+        android:label="Избранное"
+        tools:layout="@layout/fragment_favorites" />
+
+    <!-- Общий профиль (контейнер) -->
+    <fragment
+        android:id="@+id/nav_profile"
+        android:name="com.example.cooking.ui.fragments.SharedProfileFragment"
+        android:label="Профиль"
+        tools:layout="@layout/fragment_shared_profile">
+        <!-- Переходы с экрана профиля -->
+        <action
+            android:id="@+id/action_sharedProfile_to_profile"
+            app:destination="@id/destination_profile" />
+        <action
+            android:id="@+id/action_sharedProfile_to_auth"
+            app:destination="@id/destination_auth" />
+        <action
+            android:id="@+id/action_sharedProfile_to_settings"
+            app:destination="@id/destination_settings" />
+    </fragment>
+
+    <!-- Профиль пользователя -->
+    <fragment
+        android:id="@+id/destination_profile"
+        android:name="com.example.cooking.ui.fragments.ProfileFragment"
+        android:label="Мой профиль"
+        tools:layout="@layout/fragment_profile" />
+
+    <!-- Экран авторизации -->
+    <fragment
+        android:id="@+id/destination_auth"
+        android:name="com.example.cooking.ui.fragments.AuthFragment"
+        android:label="Авторизация"
+        tools:layout="@layout/fragment_auth" />
+
+    <!-- Настройки -->
+    <fragment
+        android:id="@+id/destination_settings"
+        android:name="com.example.cooking.ui.fragments.SettingsFragment"
+        android:label="Настройки"
+        tools:layout="@layout/fragment_settings" />
+
+</navigation> 

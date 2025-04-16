@@ -20,7 +20,7 @@
             android:layout_height="match_parent"
             app:cardCornerRadius="100dp"
             app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
+
             android:layout_margin="8dp">
 
             <!-- Кастомная комбинированная иконка -->
@@ -44,24 +44,14 @@
 
     <!-- Текст заблокированного доступа -->
     <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Избранное доступно только"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:textColor="@color/md_theme_onBackground"
-        android:gravity="center"
-        android:layout_marginBottom="8dp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="авторизованным пользователям"
-        android:textSize="24sp"
-        android:textStyle="bold"
-        android:textColor="@color/md_theme_onBackground"
-        android:gravity="center"
-        android:layout_marginBottom="48dp" />
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Избранное доступно только авторизованным пользователям"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="@color/md_theme_onBackground"
+            android:gravity="center"
+            android:layout_marginBottom="8dp"/>
 
     <!-- Кнопка входа -->
     <Button
@@ -70,7 +60,7 @@
         android:layout_height="wrap_content"
         android:text="Войти"
         android:backgroundTint="@color/md_theme_primary"
-        android:textColor="@color/white"
+        android:textColor="@color/md_theme_onBackground"
         android:padding="16dp"
         android:textSize="18sp"
         android:layout_marginHorizontal="32dp"
