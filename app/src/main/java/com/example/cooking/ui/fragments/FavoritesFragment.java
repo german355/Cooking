@@ -456,7 +456,7 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
         copy.setId(original.getId());
         copy.setTitle(original.getTitle());
         copy.setIngredients(original.getIngredients());
-        copy.setInstructions(original.getInstructions());
+        copy.setSteps(original.getSteps());
         copy.setPhoto_url(original.getPhoto_url());
         copy.setCreated_at(original.getCreated_at());
         copy.setUserId(original.getUserId());

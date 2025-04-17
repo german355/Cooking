@@ -13,150 +13,245 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.example.cooking.Recipe.Ingredient;
+import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.Recipe.Step;
 import com.example.cooking.utils.MySharedPreferences;
 import com.example.cooking.network.services.RecipeManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * ViewModel для экрана редактирования рецепта
+ * ViewModel для экрана редактирования рецепта.
  */
 public class EditRecipeViewModel extends AndroidViewModel {
     private static final String TAG = "EditRecipeViewModel";
-    
+
     private final RecipeManager recipeManager;
     private final MySharedPreferences preferences;
     private final ExecutorService executor;
-    
+
     // LiveData для состояний UI
-    private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
+    private final MutableLiveData<Boolean> isSaving = new MutableLiveData<>(false);
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
-    private final MutableLiveData<String> successMessage = new MutableLiveData<>();
-    
+    private final MutableLiveData<Boolean> saveResult = new MutableLiveData<>(null);
+
     // LiveData для данных рецепта
     private final MutableLiveData<Integer> recipeId = new MutableLiveData<>();
     private final MutableLiveData<String> title = new MutableLiveData<>("");
-    private final MutableLiveData<String> ingredients = new MutableLiveData<>("");
-    private final MutableLiveData<String> instructions = new MutableLiveData<>("");
-    private final MutableLiveData<String> photoUrl = new MutableLiveData<>("");
-    private final MutableLiveData<byte[]> imageBytes = new MutableLiveData<>();
-    
-    // Флаги для валидации
-    private boolean titleValid = false;
-    private boolean ingredientsValid = false;
-    private boolean instructionsValid = false;
-    
+    private final MutableLiveData<List<Ingredient>> ingredients = new MutableLiveData<>(new ArrayList<>());
+    private final MutableLiveData<List<Step>> steps = new MutableLiveData<>(new ArrayList<>());
+    private final MutableLiveData<String> photoUrl = new MutableLiveData<>(null); // URL исходного фото
+    private final MutableLiveData<byte[]> imageBytes = new MutableLiveData<>(null); // Новое выбранное/загруженное фото
+    private boolean imageChanged = false; // Флаг, указывающий, было ли изменено изображение
+    private Uri selectedImageUri = null; // Uri выбранного изображения
+
     public EditRecipeViewModel(@NonNull Application application) {
         super(application);
         recipeManager = new RecipeManager(application);
         preferences = new MySharedPreferences(application);
         executor = Executors.newSingleThreadExecutor();
     }
-    
+
     /**
-     * Устанавливает данные рецепта для редактирования
+     * Устанавливает начальные данные рецепта для редактирования из объекта Recipe.
+     * @param recipeToEdit Объект Recipe, полученный из Intent.
      */
-    public void setRecipeData(int id, String recipeTitle, String recipeIngredients, 
-                             String recipeInstructions, String recipePhotoUrl) {
-        recipeId.setValue(id);
-        title.setValue(recipeTitle);
-        ingredients.setValue(recipeIngredients);
-        instructions.setValue(recipeInstructions);
-        photoUrl.setValue(recipePhotoUrl);
-        
-        // Сразу проверяем валидность данных
-        titleValid = validateTitle(recipeTitle);
-        ingredientsValid = validateIngredients(recipeIngredients);
-        instructionsValid = validateInstructions(recipeInstructions);
-        
-        // Если есть URL изображения, загружаем его
-        if (recipePhotoUrl != null && !recipePhotoUrl.isEmpty()) {
-            loadImageFromUrl(recipePhotoUrl);
+    public void setRecipeData(@NonNull Recipe recipeToEdit) {
+        recipeId.setValue(recipeToEdit.getId());
+        title.setValue(recipeToEdit.getTitle() != null ? recipeToEdit.getTitle() : "");
+        photoUrl.setValue(recipeToEdit.getPhoto_url()); // Сохраняем исходный URL
+        imageBytes.setValue(null); // Сбрасываем новое/выбранное изображение
+        selectedImageUri = null; // Сбрасываем Uri
+        imageChanged = false;
+
+        // Получаем списки напрямую
+        List<Ingredient> initialIngredients = recipeToEdit.getIngredients();
+        List<Step> initialSteps = recipeToEdit.getSteps();
+
+        // Убедимся, что списки не null и содержат хотя бы один элемент
+        if (initialIngredients == null || initialIngredients.isEmpty()) {
+            initialIngredients = new ArrayList<>();
+            initialIngredients.add(new Ingredient()); // Добавляем пустой для редактирования
+        }
+        if (initialSteps == null || initialSteps.isEmpty()) {
+            initialSteps = new ArrayList<>();
+            Step firstStep = new Step();
+            firstStep.setNumber(1);
+            initialSteps.add(firstStep); // Добавляем пустой первый шаг
+        }
+
+        // Устанавливаем списки в LiveData
+        ingredients.setValue(new ArrayList<>(initialIngredients)); // Используем копию
+        steps.setValue(new ArrayList<>(initialSteps)); // Используем копию
+
+        Log.d(TAG, "setRecipeData: Установлены данные для рецепта ID " + recipeId.getValue() + ", Ингредиентов: " + ingredients.getValue().size() + ", Шагов: " + steps.getValue().size());
+    }
+
+    // --- Методы для управления списками (аналогично AddRecipeViewModel) ---
+
+    /**
+     * Добавляет пустой ингредиент в список
+     */
+    public void addEmptyIngredient() {
+        List<Ingredient> currentList = ingredients.getValue();
+        if (currentList == null) {
+            currentList = new ArrayList<>();
+        }
+        // Создаем копию списка, чтобы LiveData заметила изменение
+        List<Ingredient> newList = new ArrayList<>(currentList);
+        newList.add(new Ingredient());
+        ingredients.setValue(newList);
+        // Убираем валидацию при добавлении нового пустого ингредиента
+        // validateIngredientsList(); // Перепроверяем валидность списка
+    }
+
+    /**
+     * Обновляет ингредиент по позиции
+     */
+    public void updateIngredient(int position, Ingredient ingredient) {
+        List<Ingredient> currentList = ingredients.getValue();
+        if (currentList != null && position >= 0 && position < currentList.size()) {
+            // Создаем копию списка для обновления LiveData
+            List<Ingredient> newList = new ArrayList<>(currentList);
+            newList.set(position, ingredient);
+            ingredients.setValue(newList);
+            // Валидацию можно вызвать здесь или положиться на TextWatcher в адаптере
+            validateIngredientsList();
         }
     }
-    
+
     /**
-     * Загружает изображение по URL и преобразует его в массив байтов
+     * Удаляет ингредиент по позиции
+     */
+    public void removeIngredient(int position) {
+        List<Ingredient> currentList = ingredients.getValue();
+        // Не удаляем, если это последний ингредиент
+        if (currentList != null && currentList.size() > 1 && position >= 0 && position < currentList.size()) {
+            List<Ingredient> newList = new ArrayList<>(currentList);
+            newList.remove(position);
+            ingredients.setValue(newList);
+            validateIngredientsList(); // Перепроверяем валидность списка
+        }
+    }
+
+    /**
+     * Добавляет пустой шаг в список
+     */
+    public void addEmptyStep() {
+        List<Step> currentList = steps.getValue();
+        if (currentList == null) {
+            currentList = new ArrayList<>();
+        }
+        List<Step> newList = new ArrayList<>(currentList);
+        Step newStep = new Step();
+        newStep.setNumber(newList.size() + 1); // Устанавливаем номер
+        newList.add(newStep);
+        steps.setValue(newList);
+        // Убираем валидацию при добавлении нового пустого шага
+        // validateStepsList(); // Перепроверяем валидность списка
+    }
+
+    /**
+     * Обновляет шаг по позиции
+     */
+    public void updateStep(int position, Step step) {
+        List<Step> currentList = steps.getValue();
+        if (currentList != null && position >= 0 && position < currentList.size()) {
+             List<Step> newList = new ArrayList<>(currentList);
+             // Номер шага может быть обновлен здесь или при удалении/добавлении
+             // Убедимся, что номер шага соответствует позиции + 1
+             step.setNumber(position + 1);
+             newList.set(position, step);
+             steps.setValue(newList);
+             validateStepsList();
+        }
+    }
+
+    /**
+     * Удаляет шаг по позиции и обновляет нумерацию
+     */
+    public void removeStep(int position) {
+        List<Step> currentList = steps.getValue();
+        // Не удаляем, если это последний шаг
+        if (currentList != null && currentList.size() > 1 && position >= 0 && position < currentList.size()) {
+            List<Step> newList = new ArrayList<>(currentList);
+            newList.remove(position);
+            // Обновляем нумерацию оставшихся шагов
+            for (int i = 0; i < newList.size(); i++) {
+                newList.get(i).setNumber(i + 1);
+            }
+            steps.setValue(newList);
+            validateStepsList(); // Перепроверяем валидность списка
+        }
+    }
+
+    // --- Обработка и загрузка изображений ---
+
+    /**
+     * Загружает изображение по URL (обычно для отображения существующего фото)
      */
     public void loadImageFromUrl(String url) {
-        if (url == null || url.isEmpty()) {
-            Log.e(TAG, "loadImageFromUrl: URL пустой или null");
+        if (url == null || url.isEmpty() || imageBytes.getValue() != null) {
+            Log.d(TAG, "loadImageFromUrl: URL пуст или уже есть новое изображение, загрузка пропущена.");
             return;
         }
-        
-        isLoading.setValue(true);
-        
+        //isLoading.setValue(true); // Возможно, индикатор загрузки не нужен здесь
         executeIfActive(() -> {
             try {
-                // Загружаем изображение из URL
                 java.net.URL imageUrl = new java.net.URL(url);
                 Bitmap bitmap = BitmapFactory.decodeStream(imageUrl.openConnection().getInputStream());
-                
                 if (bitmap != null) {
-                    // Сжимаем изображение до разумного размера
                     Bitmap resizedBitmap = resizeBitmap(bitmap, 800);
-                    
-                    // Преобразуем в массив байтов
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos);
-                    
-                    // Устанавливаем в LiveData
-                    imageBytes.postValue(baos.toByteArray());
-                    isLoading.postValue(false);
-                    
-                    Log.d(TAG, "loadImageFromUrl: Изображение успешно загружено, размер: " + 
-                          baos.toByteArray().length + " байт");
+                    resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos);
+                    byte[] bytes = baos.toByteArray();
+                    if (imageBytes.getValue() == null && selectedImageUri == null) { // Устанавливаем только если нет нового
+                        imageBytes.postValue(bytes);
+                        imageChanged = false;
+                    }
+                    Log.d(TAG, "loadImageFromUrl: Исходное изображение загружено.");
                 } else {
-                    isLoading.postValue(false);
-                    errorMessage.postValue("Не удалось загрузить изображение");
+                     Log.e(TAG, "loadImageFromUrl: Не удалось декодировать Bitmap.");
+                    //errorMessage.postValue("Не удалось загрузить исходное изображение");
                 }
             } catch (Exception e) {
                 Log.e(TAG, "loadImageFromUrl: Ошибка при загрузке изображения", e);
-                isLoading.postValue(false);
-                errorMessage.postValue("Ошибка при загрузке изображения: " + e.getMessage());
+                //errorMessage.postValue("Ошибка загрузки изображения: " + e.getMessage());
+            } finally {
+                 //isLoading.postValue(false);
             }
         });
     }
-    
+
     /**
-     * Обрабатывает выбранное изображение из галереи
+     * Обрабатывает новое выбранное изображение из галереи
      */
     public void processSelectedImage(Uri imageUri) {
         if (imageUri == null) {
             errorMessage.setValue("Ошибка при выборе изображения: Uri = null");
             return;
         }
-        
-        isLoading.setValue(true);
-        
+        isSaving.setValue(true);
         executeIfActive(() -> {
             try {
-                // Получаем InputStream из выбранного Uri
                 InputStream inputStream = getApplication().getContentResolver().openInputStream(imageUri);
-                
                 if (inputStream != null) {
-                    // Декодируем изображение
                     Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
                     inputStream.close();
-                    
                     if (bitmap != null) {
-                        // Сжимаем изображение до разумного размера
                         Bitmap resizedBitmap = resizeBitmap(bitmap, 800);
-                        
-                        // Преобразуем в массив байтов
                         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 70, baos);
-                        
-                        // Устанавливаем в LiveData
+                        resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos); // Качество 85
                         byte[] bytes = baos.toByteArray();
                         imageBytes.postValue(bytes);
-                        
-                        // Очищаем photoUrl, так как теперь используем локальное изображение
-                        photoUrl.postValue("");
-                        
+                        imageChanged = true;
+                        photoUrl.postValue(null); // Сбрасываем старый URL, т.к. есть новое фото
                         Log.d(TAG, "processSelectedImage: Изображение обработано, размер: " + bytes.length + " байт");
                     } else {
                         errorMessage.postValue("Не удалось декодировать изображение");
@@ -166,242 +261,204 @@ public class EditRecipeViewModel extends AndroidViewModel {
                 }
             } catch (Exception e) {
                 Log.e(TAG, "processSelectedImage: Ошибка при обработке изображения", e);
-                errorMessage.postValue("Ошибка при обработке изображения: " + e.getMessage());
+                errorMessage.postValue("Ошибка обработки изображения: " + e.getMessage());
+                imageBytes.postValue(null);
+                imageChanged = false;
             } finally {
-                isLoading.postValue(false);
+                isSaving.postValue(false);
             }
         });
     }
-    
+
     /**
-     * Сохраняет обновленный рецепт
+     * Сохраняет (обновляет) рецепт
      */
-    public void updateRecipe() {
-        // Проверяем подключение к интернету
+    public void saveRecipe() {
+        if (!validateAll()) { // Проверяем валидность перед сохранением
+            return;
+        }
+
         if (!isNetworkAvailable()) {
-            errorMessage.setValue("Отсутствует подключение к интернету");
+            errorMessage.setValue("Нет подключения к интернету для сохранения рецепта.");
             return;
         }
-        
-        // Проверяем валидность полей
-        String titleValue = title.getValue();
-        String ingredientsValue = ingredients.getValue();
-        String instructionsValue = instructions.getValue();
-        
-        if (!validateTitle(titleValue) || !validateIngredients(ingredientsValue) || 
-            !validateInstructions(instructionsValue)) {
-            errorMessage.setValue("Пожалуйста, исправьте ошибки в форме");
+
+        isSaving.setValue(true);
+        errorMessage.setValue(null);
+
+        String currentTitle = title.getValue();
+        List<Ingredient> currentIngredients = ingredients.getValue();
+        List<Step> currentSteps = steps.getValue();
+        byte[] currentImageBytes = imageBytes.getValue();
+        Integer currentRecipeId = recipeId.getValue();
+        String userId = preferences.getString("userId", "0");
+        int permission = preferences.getInt("permission", 1);
+
+        if (currentRecipeId == null) {
+            errorMessage.setValue("Ошибка: ID рецепта отсутствует.");
+            isSaving.setValue(false);
             return;
         }
-        
-        // Показываем индикатор загрузки
-        isLoading.setValue(true);
-        
-        int recipeIdValue = recipeId.getValue() != null ? recipeId.getValue() : -1;
-        String userId = preferences.getString("userId", "99");
-        byte[] imageBytesValue = imageBytes.getValue();
-        
-        // Обновляем рецепт через RecipeManager
-        recipeManager.saveRecipe(titleValue, ingredientsValue, instructionsValue, userId, 
-                                recipeIdValue, imageBytesValue, new RecipeManager.RecipeSaveCallback() {
-            @Override
-            public void onSuccess(String message) {
-                isLoading.postValue(false);
-                successMessage.postValue(message);
+
+        recipeManager.updateRecipe(
+            currentRecipeId,
+            currentTitle,
+            currentIngredients,
+            currentSteps,
+            // Передаем байты только если изображение было изменено
+            imageChanged ? currentImageBytes : null, 
+            userId,
+            permission,
+            new RecipeManager.RecipeSaveCallback() {
+                @Override
+                public void onSuccess(String message) {
+                    isSaving.postValue(false);
+                    saveResult.postValue(true);
+                    Log.d(TAG, "Рецепт успешно обновлен: " + message);
+                    // Очистка кэша? Возможно, не здесь, а при возврате в список
+                }
+
+                @Override
+                public void onFailure(String error) {
+                    isSaving.postValue(false);
+                    errorMessage.postValue(error);
+                    saveResult.postValue(false);
+                    Log.e(TAG, "Ошибка обновления рецепта: " + error);
+                }
             }
-            
-            @Override
-            public void onFailure(String error) {
-                isLoading.postValue(false);
-                errorMessage.postValue(error);
-            }
-        });
+        );
     }
-    
-    /**
-     * Проверяет наличие интернет-соединения
-     */
+
+    // --- Валидация ---
+
+    private boolean validateAll() {
+        boolean isTitleValid = validateTitle();
+        boolean areIngredientsValid = validateIngredientsList();
+        boolean areStepsValid = validateStepsList();
+        // Валидация изображения не требуется для сохранения,
+        // но можно добавить, если нужно обязательно фото
+        return isTitleValid && areIngredientsValid && areStepsValid;
+    }
+
+    private boolean validateTitle() {
+        String currentTitle = title.getValue();
+        if (currentTitle == null || currentTitle.trim().isEmpty()) {
+            // titleError.setValue("Название не может быть пустым"); // Ошибки показываются в Activity
+            return false;
+        } else {
+            // titleError.setValue(null);
+            return true;
+        }
+    }
+
+    private boolean validateIngredientsList() {
+        List<Ingredient> currentList = ingredients.getValue();
+        if (currentList == null || currentList.isEmpty()) {
+            // ingredientsListError.setValue("Добавьте хотя бы один ингредиент");
+            return false;
+        }
+        for (Ingredient ingredient : currentList) {
+            if (ingredient.getName() == null || ingredient.getName().trim().isEmpty() ||
+                ingredient.getType() == null || ingredient.getType().trim().isEmpty() ||
+                ingredient.getCount() <= 0) {
+                // ingredientsListError.setValue("Заполните все поля для каждого ингредиента");
+                 Log.w(TAG, "validateIngredientsList: Невалидный ингредиент: " + ingredient);
+                return false; // Нашли хотя бы один невалидный
+            }
+        }
+        // ingredientsListError.setValue(null); // Все ингредиенты валидны
+        return true;
+    }
+
+     private boolean validateStepsList() {
+        List<Step> currentList = steps.getValue();
+        if (currentList == null || currentList.isEmpty()) {
+             // stepsListError.setValue("Добавьте хотя бы один шаг");
+            return false;
+        }
+        for (Step step : currentList) {
+            if (step.getInstruction() == null || step.getInstruction().trim().isEmpty()) {
+                 // stepsListError.setValue("Заполните описание для каждого шага");
+                 Log.w(TAG, "validateStepsList: Невалидный шаг: " + step);
+                return false; // Нашли хотя бы один невалидный
+            }
+        }
+        // stepsListError.setValue(null); // Все шаги валидны
+        return true;
+    }
+
+    // --- Сеттеры для UI --- (для title, т.к. он редактируется напрямую)
+    public void setTitle(String newTitle) {
+        if (!newTitle.equals(title.getValue())) {
+            title.setValue(newTitle);
+            // validateTitle(); // Валидация при изменении
+        }
+    }
+
+    // --- Геттеры LiveData ---
+    public LiveData<Boolean> getIsSaving() { return isSaving; }
+    public LiveData<String> getErrorMessage() { return errorMessage; }
+    public LiveData<Boolean> getSaveResult() { return saveResult; }
+    public LiveData<String> getTitle() { return title; }
+    public LiveData<List<Ingredient>> getIngredients() { return ingredients; }
+    public LiveData<List<Step>> getSteps() { return steps; }
+    public LiveData<String> getPhotoUrl() { return photoUrl; } // URL исходного фото
+    public LiveData<byte[]> getImageBytes() { return imageBytes; } // Новое/загруженное фото
+
+    // --- Методы для сброса сообщений/результатов --- 
+    public void clearErrorMessage() {
+        errorMessage.setValue(null);
+    }
+
+    public void clearSaveResult() {
+        saveResult.setValue(null);
+    }
+
+    // --- Вспомогательные методы ---
+
     private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager = (ConnectivityManager) 
-                getApplication().getSystemService(Application.CONNECTIVITY_SERVICE);
-        NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
-        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
+        ConnectivityManager cm = (ConnectivityManager) getApplication().getSystemService(Application.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+        return activeNetwork != null && activeNetwork.isConnectedOrConnecting();
     }
-    
-    /**
-     * Изменяет размер изображения
-     */
+
     private Bitmap resizeBitmap(Bitmap bitmap, int maxSide) {
         int width = bitmap.getWidth();
         int height = bitmap.getHeight();
-        
-        // Определяем коэффициент масштабирования
-        float scale;
+        float ratio = (float) width / height;
+
         if (width > height) {
-            scale = (float) maxSide / width;
+            if (width > maxSide) {
+                width = maxSide;
+                height = (int) (width / ratio);
+            }
         } else {
-            scale = (float) maxSide / height;
+            if (height > maxSide) {
+                height = maxSide;
+                width = (int) (height * ratio);
+            }
         }
-        
-        // Если изображение уже меньше maxSide, не масштабируем
-        if (scale >= 1) {
-            return bitmap;
-        }
-        
-        // Вычисляем новые размеры
-        int newWidth = Math.round(width * scale);
-        int newHeight = Math.round(height * scale);
-        
-        // Создаем новое bitmap с нужными размерами
-        return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+        return Bitmap.createScaledBitmap(bitmap, width, height, true);
     }
-    
-    /**
-     * Валидирует название рецепта
-     */
-    public boolean validateTitle(String titleValue) {
-        if (titleValue == null || titleValue.trim().isEmpty()) {
-            errorMessage.setValue("Название рецепта не может быть пустым");
-            titleValid = false;
-            return false;
-        }
-        
-        if (titleValue.length() < 3) {
-            errorMessage.setValue("Название рецепта должно быть не менее 3 символов");
-            titleValid = false;
-            return false;
-        }
-        
-        if (titleValue.length() > 100) {
-            errorMessage.setValue("Название рецепта не должно превышать 100 символов");
-            titleValid = false;
-            return false;
-        }
-        
-        titleValid = true;
-        return true;
-    }
-    
-    /**
-     * Валидирует список ингредиентов
-     */
-    public boolean validateIngredients(String ingredientsValue) {
-        if (ingredientsValue == null || ingredientsValue.trim().isEmpty()) {
-            errorMessage.setValue("Список ингредиентов не может быть пустым");
-            ingredientsValid = false;
-            return false;
-        }
-        
-        if (ingredientsValue.length() < 10) {
-            errorMessage.setValue("Список ингредиентов должен быть не менее 10 символов");
-            ingredientsValid = false;
-            return false;
-        }
-        
-        if (ingredientsValue.length() > 1000) {
-            errorMessage.setValue("Список ингредиентов не должен превышать 1000 символов");
-            ingredientsValid = false;
-            return false;
-        }
-        
-        ingredientsValid = true;
-        return true;
-    }
-    
-    /**
-     * Валидирует инструкции приготовления
-     */
-    public boolean validateInstructions(String instructionsValue) {
-        if (instructionsValue == null || instructionsValue.trim().isEmpty()) {
-            errorMessage.setValue("Инструкции по приготовлению не могут быть пустыми");
-            instructionsValid = false;
-            return false;
-        }
-        
-        if (instructionsValue.length() < 30) {
-            errorMessage.setValue("Инструкции должны быть не менее 30 символов");
-            instructionsValid = false;
-            return false;
-        }
-        
-        if (instructionsValue.length() > 2000) {
-            errorMessage.setValue("Инструкции не должны превышать 2000 символов");
-            instructionsValid = false;
-            return false;
-        }
-        
-        instructionsValid = true;
-        return true;
-    }
-    
-    /**
-     * Сеттеры для данных рецепта
-     */
-    public void setTitle(String newTitle) {
-        title.setValue(newTitle);
-        validateTitle(newTitle);
-    }
-    
-    public void setIngredients(String newIngredients) {
-        ingredients.setValue(newIngredients);
-        validateIngredients(newIngredients);
-    }
-    
-    public void setInstructions(String newInstructions) {
-        instructions.setValue(newInstructions);
-        validateInstructions(newInstructions);
-    }
-    
-    /**
-     * Геттеры для LiveData
-     */
-    public LiveData<Boolean> getIsLoading() {
-        return isLoading;
-    }
-    
-    public LiveData<String> getErrorMessage() {
-        return errorMessage;
-    }
-    
-    public LiveData<String> getSuccessMessage() {
-        return successMessage;
-    }
-    
-    public LiveData<String> getTitle() {
-        return title;
-    }
-    
-    public LiveData<String> getIngredients() {
-        return ingredients;
-    }
-    
-    public LiveData<String> getInstructions() {
-        return instructions;
-    }
-    
-    public LiveData<String> getPhotoUrl() {
-        return photoUrl;
-    }
-    
-    public LiveData<byte[]> getImageBytes() {
-        return imageBytes;
-    }
-    
-    /**
-     * Метод, выполняющий операцию в executor с проверкой его состояния
-     * @param task задача для выполнения
-     */
+
     private void executeIfActive(Runnable task) {
         if (!executor.isShutdown()) {
             executor.execute(task);
-        } else {
-            Log.w(TAG, "Executor уже завершен, пропускаем задачу");
         }
     }
-    
+
     @Override
     protected void onCleared() {
-        executor.shutdown();
         super.onCleared();
+        executor.shutdown();
     }
-} 
+
+    // Новый метод для установки Uri
+    public void setImageUri(Uri imageUri) {
+        if (imageUri == null) return;
+        selectedImageUri = imageUri; 
+        Log.d(TAG, "setImageUri: Установлен Uri: " + imageUri);
+        processSelectedImage(imageUri); // Запускаем обработку
+    }
+}
+

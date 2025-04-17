@@ -98,14 +98,15 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
         // Устанавливаем состояние избранного
         holder.favoriteButton.setChecked(recipe.isLiked());
         
-        // После установки состояния кнопки обновляем её цвет
-        holder.favoriteButton.refreshDrawableState();
-        
-        // Для правильного отображения цветов при первоначальной загрузке
+        // Устанавливаем цвет tint
         if (recipe.isLiked()) {
+            // Если лайк есть, устанавливаем красный tint
             holder.favoriteButton.setButtonTintList(ColorStateList.valueOf(Color.parseColor("#FF0031")));
+            Log.d(TAG, "Recipe ID: " + recipe.getId() + " is Liked. Setting RED tint."); // Лог для лайка
         } else {
-            holder.favoriteButton.setButtonTintList(ColorStateList.valueOf(Color.BLACK));
+            // Если лайка нет, сбрасываем tint на null, чтобы использовался цвет по умолчанию
+            holder.favoriteButton.setButtonTintList(null);
+            Log.d(TAG, "Recipe ID: " + recipe.getId() + " is NOT Liked. Setting NULL tint."); // Лог для снятия лайка
         }
         
         // Убедимся, что кнопка избранного всегда видна
@@ -113,18 +114,15 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
         
         // Слушатель нажатий на кнопку избранного
         holder.favoriteButton.setOnClickListener(v -> {
-            boolean isChecked = holder.favoriteButton.isChecked();
+            boolean isChecked = holder.favoriteButton.isChecked(); // Состояние ПОСЛЕ клика
             
             // Вызываем метод обработки лайка, который проверит авторизацию
             if (likeListener != null) {
-                // Сначала сбрасываем состояние чекбокса, чтобы избежать визуального изменения до проверки авторизации
-                holder.favoriteButton.setChecked(!isChecked);
-                
                 // Временно отключаем кнопку для предотвращения повторных нажатий
                 holder.favoriteButton.setEnabled(false);
                 
                 // Вызываем обратный вызов, где будет проверка авторизации
-                // и только если действие успешно, изменяем визуальное состояние
+                // Визуальное состояние обновится, когда ListAdapter получит новые данные
                 likeListener.onRecipeLike(recipe, isChecked);
                 
                 // Возвращаем активное состояние кнопке с задержкой
@@ -135,20 +133,18 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
         // Устанавливаем обработчик нажатий на карточку
         holder.cardView.setOnClickListener(v -> {
             Intent intent = new Intent(v.getContext(), RecipeDetailActivity.class);
-            intent.putExtra("recipe_id", recipe.getId());
-            intent.putExtra("recipe_title", recipe.getTitle());
-            intent.putExtra("recipe_ingredients", recipe.getIngredients());
-            intent.putExtra("recipe_instructions", recipe.getInstructions());
-            intent.putExtra("Created_at", recipe.getCreated_at());
-            intent.putExtra("userId", recipe.getUserId());
-            intent.putExtra("photo_url", recipe.getPhoto_url());
-            intent.putExtra("isLiked", recipe.isLiked());
             
+            // --- Передаем ВЕСЬ объект Recipe как Parcelable --- 
+            intent.putExtra(RecipeDetailActivity.EXTRA_SELECTED_RECIPE, recipe);
+
+            
+            Log.d(TAG, "Запуск RecipeDetailActivity для рецепта ID: " + recipe.getId());
             if (recipe.getPhoto_url() != null) {
                 Log.d(TAG, "Photo URL: " + recipe.getPhoto_url());
             }
             
-            // Запускаем активность с ожиданием результата
+            // Запускаем активность с ожиданием результата (код 200, возможно, не используется?)
+            // Если результат не нужен, можно использовать просто startActivity(intent)
             ((AppCompatActivity) v.getContext()).startActivityForResult(intent, 200);
         });
     }

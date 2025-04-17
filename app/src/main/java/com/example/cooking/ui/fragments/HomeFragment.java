@@ -247,7 +247,7 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
                 updatedRecipe.setId(recipe.getId());
                 updatedRecipe.setTitle(recipe.getTitle());
                 updatedRecipe.setIngredients(recipe.getIngredients());
-                updatedRecipe.setInstructions(recipe.getInstructions());
+                updatedRecipe.setSteps(recipe.getSteps());
                 updatedRecipe.setPhoto_url(recipe.getPhoto_url());
                 updatedRecipe.setCreated_at(recipe.getCreated_at());
                 updatedRecipe.setUserId(recipe.getUserId());

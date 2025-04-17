@@ -4,6 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#FFFFFF"
     tools:context=".ui.activities.RecipeDetailActivity">
 
     <LinearLayout
@@ -18,7 +19,8 @@
             android:background="?attr/colorPrimary"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
-            app:navigationIcon="@android:drawable/ic_menu_revert" />
+            app:navigationIcon="@android:drawable/ic_menu_revert"
+            app:title="" />
 
         <ScrollView
             android:layout_width="match_parent"
@@ -28,15 +30,17 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
+                android:orientation="vertical">
+                
                 <TextView
                 android:id="@+id/recipe_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
                 android:layout_marginBottom="16dp"
                 android:textSize="24sp"
                 android:textStyle="bold"
+                android:textColor="#212121"
                 tools:text="Название рецепта" />
 
                 <!-- Изображение рецепта -->
@@ -51,57 +55,139 @@
                     app:shapeAppearanceOverlay="@style/RoundedImageView"
                     tools:src="@drawable/white_card_background" />
 
-                <!-- Existing content remains the same -->
+                <!-- Секция с ингредиентами -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="#F5F5F5"
+                    android:padding="16dp">
+                    
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+                        
+                        <ImageView
+                            android:id="@+id/basket_icon"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:src="@drawable/ic_basket"
+                            app:tint="?attr/colorPrimary"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent" />
+                            
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Продукты"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:textColor="#212121"
+                            android:layout_marginStart="8dp"
+                            app:layout_constraintStart_toEndOf="@id/basket_icon"
+                            app:layout_constraintTop_toTopOf="@id/basket_icon"
+                            app:layout_constraintBottom_toBottomOf="@id/basket_icon" />
+                            
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                    
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Порция"
+                        android:textColor="#757575"
+                        android:layout_marginTop="16dp" />
+                        
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="8dp">
+                        
+                        <Button
+                            android:id="@+id/decrease_portion"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:text="-"
+                            android:textSize="16sp"
+                            android:backgroundTint="#E0E0E0"
+                            android:textColor="#212121" />
+                            
+                        <TextView
+                            android:id="@+id/portion_count"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:text="1"
+                            android:textColor="#212121"
+                            android:gravity="center"
+                            android:textSize="16sp" />
+                            
+                        <Button
+                            android:id="@+id/increase_portion"
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:text="+"
+                            android:textSize="16sp"
+                            android:backgroundTint="#E0E0E0"
+                            android:textColor="#212121" />
+                    </LinearLayout>
 
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ингредиенты"
+                        android:textColor="#757575"
+                        android:textSize="16sp"
+                        android:layout_marginTop="16dp" />
 
+                    <androidx.recyclerview.widget.RecyclerView
+                        android:id="@+id/ingredients_recyclerview"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="16dp">
+
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Секция с шагами приготовления -->
                 <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Начать готовить"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#212121"
+                    android:layout_marginTop="16dp"
+                    android:layout_marginHorizontal="16dp" />
+                    
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/steps_recyclerview"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="Ингредиенты:"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/recipe_ingredients"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:layout_marginBottom="16dp"
-                    android:textSize="16sp"
-                    tools:text="Ингредиенты рецепта" />
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:text="Инструкции по приготовлению:"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/recipe_instructions"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:textSize="16sp"
-                    tools:text="Инструкции по приготовлению" />
-
+                    android:layout_marginHorizontal="16dp"
+                    app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
+                
                 <TextView
                     android:id="@+id/recipe_date"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
+                    android:layout_marginHorizontal="16dp"
                     android:gravity="end"
                     android:textSize="14sp"
                     android:textStyle="italic"
+                    android:textColor="#757575"
                     tools:text="Добавлено: 01.03.2023" />
-
             </LinearLayout>
         </ScrollView>
     </LinearLayout>
-    <!-- Красная кнопка удаления с иконкой корзины -->
-
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/like_button"
