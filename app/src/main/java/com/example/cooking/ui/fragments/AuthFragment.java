@@ -16,6 +16,8 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.navigation.NavController;
+import androidx.navigation.Navigation;
 
 import com.example.cooking.R;
 import com.example.cooking.auth.FirebaseAuthManager;
@@ -26,13 +28,13 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
 /**
- * Фрагмент авторизации, который показывается вместо ProfileFragment, 
+ * Фрагмент авторизации, который показывается вместо ProfileFragment,
  * если пользователь не авторизован.
  */
 public class AuthFragment extends Fragment {
     private static final String TAG = "AuthFragment";
     private static final int RC_SIGN_IN = FirebaseAuthManager.RC_SIGN_IN;
-    
+
     private TextInputEditText emailEditText;
     private TextInputEditText passwordEditText;
     private TextInputLayout emailInputLayout;
@@ -41,8 +43,9 @@ public class AuthFragment extends Fragment {
     private Button googleLoginButton;
     private TextView registerTextView;
     private ProgressBar progressBar;
-    
+
     private AuthViewModel viewModel;
+    private NavController navController;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -50,7 +53,7 @@ public class AuthFragment extends Fragment {
 
         // Инициализация ViewModel
         viewModel = new ViewModelProvider(this).get(AuthViewModel.class);
-        
+
         // Инициализация UI элементов
         emailEditText = view.findViewById(R.id.email_edit_text);
         passwordEditText = view.findViewById(R.id.password_edit_text);
@@ -60,45 +63,52 @@ public class AuthFragment extends Fragment {
         googleLoginButton = view.findViewById(R.id.google_login_button);
         registerTextView = view.findViewById(R.id.register_text_view);
         progressBar = view.findViewById(R.id.login_progress_bar);
-        
+
         // Настройка обработчиков ввода
         setupTextWatchers();
-        
+
         // Настройка обработчиков нажатий
         setupClickListeners();
-        
+
         // Настройка наблюдателей LiveData
         setupObservers();
-        
+
         // Инициализация Google Sign-In
         String webClientId = getString(R.string.default_web_client_id);
         viewModel.initGoogleSignIn(webClientId);
 
         return view;
     }
-    
+
+    @Override
+    public void onViewCreated(View view, Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        // Получаем NavController
+        navController = Navigation.findNavController(view);
+    }
+
     private void setupObservers() {
         // Наблюдатель для состояния загрузки
         viewModel.getIsLoading().observe(getViewLifecycleOwner(), isLoading -> {
             progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
             loginButton.setEnabled(!isLoading);
             googleLoginButton.setEnabled(!isLoading);
-            
+
             if (isLoading) {
                 loginButton.setText("Входим...");
             } else {
                 loginButton.setText("Войти");
             }
         });
-        
+
         // Наблюдатель для сообщений об ошибках
         viewModel.getErrorMessage().observe(getViewLifecycleOwner(), errorMessage -> {
             if (errorMessage != null && !errorMessage.isEmpty()) {
-                //Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show();
+                // Toast.makeText(requireContext(), errorMessage, Toast.LENGTH_LONG).show();
                 viewModel.clearErrorMessage();
             }
         });
-        
+
         // Наблюдатель для состояния аутентификации
         viewModel.getIsAuthenticated().observe(getViewLifecycleOwner(), isAuthenticated -> {
             if (isAuthenticated) {
@@ -107,8 +117,11 @@ public class AuthFragment extends Fragment {
                 MainViewModel mainViewModel = new ViewModelProvider(requireActivity()).get(MainViewModel.class);
                 // Обновляем состояние авторизации в MainViewModel, что автоматически обновит UI
                 mainViewModel.checkAuthState();
-                
+
                 Toast.makeText(requireContext(), "Вход выполнен успешно", Toast.LENGTH_SHORT).show();
+
+                // Возвращаемся назад с помощью Navigation Component
+                navController.navigateUp();
             }
         });
     }
@@ -117,10 +130,12 @@ public class AuthFragment extends Fragment {
         // Email TextWatcher
         emailEditText.addTextChangedListener(new TextWatcher() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
 
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
 
             @Override
             public void afterTextChanged(Editable s) {
@@ -136,10 +151,12 @@ public class AuthFragment extends Fragment {
         // Password TextWatcher
         passwordEditText.addTextChangedListener(new TextWatcher() {
             @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+            }
 
             @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+            }
 
             @Override
             public void afterTextChanged(Editable s) {
@@ -152,43 +169,43 @@ public class AuthFragment extends Fragment {
             }
         });
     }
-    
+
     private void setupClickListeners() {
         // Обработчик нажатия кнопки входа
         loginButton.setOnClickListener(v -> {
             String email = emailEditText.getText().toString().trim();
             String password = passwordEditText.getText().toString();
-            
+
             if (viewModel.validateAllLoginInputs(email, password)) {
                 viewModel.signInWithEmailPassword(email, password);
             }
         });
-        
+
         // Обработчик нажатия кнопки входа через Google
         googleLoginButton.setOnClickListener(v -> {
             try {
                 viewModel.signInWithGoogle(requireActivity());
             } catch (Exception e) {
                 Log.e(TAG, "Ошибка при запуске Google Sign-In: " + e.getMessage());
-                Toast.makeText(requireContext(), "Ошибка при входе через Google: " + e.getMessage(), 
+                Toast.makeText(requireContext(), "Ошибка при входе через Google: " + e.getMessage(),
                         Toast.LENGTH_SHORT).show();
             }
         });
-        
+
         // Обработчик нажатия текста регистрации
         registerTextView.setOnClickListener(v -> {
             Intent intent = new Intent(requireActivity(), Regist.class);
             startActivity(intent);
         });
     }
-    
+
     @Override
     public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        
+
         // Обработка результата входа через Google
         if (requestCode == RC_SIGN_IN) {
             viewModel.handleGoogleSignInResult(requestCode, resultCode, data);
         }
     }
-} 
+}
