@@ -4,18 +4,23 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.util.Log;
 
+import com.example.cooking.Recipe.Ingredient;
 import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.Recipe.Step;
 import com.example.cooking.config.ServerConfig;
 import com.example.cooking.network.api.LikedRecipesApi;
 import com.example.cooking.network.responses.RecipesResponse;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -39,6 +44,7 @@ public class LikedRecipesRepository {
     
     private final Context context;
     private final LikedRecipesApi likedRecipesApi;
+    private static final Gson gson = new Gson();
     
     public interface LikedRecipesCallback {
         void onRecipesLoaded(List<Recipe> recipes);
@@ -53,14 +59,14 @@ public class LikedRecipesRepository {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
         
-        Gson gson = new GsonBuilder()
+        Gson gsonConverter = new GsonBuilder()
                 .setLenient()
                 .create();
         
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(API_URL + "/")
                 .client(httpClient)
-                .addConverterFactory(GsonConverterFactory.create(gson))
+                .addConverterFactory(GsonConverterFactory.create(gsonConverter))
                 .build();
         
         likedRecipesApi = retrofit.create(LikedRecipesApi.class);
@@ -70,10 +76,12 @@ public class LikedRecipesRepository {
      * Получает лайкнутые рецепты, сначала проверяя кэш, затем загружая с сервера.
      */
     public void getLikedRecipes(String userId, final LikedRecipesCallback callback) {
-        // Проверяем кэш
-
+        Result<List<Recipe>> cachedResult = loadFromCache(userId);
+        if (cachedResult.isSuccess() && !isCacheExpired(userId)) {
+            callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
+            return;
+        }
         
-        // Загружаем с сервера
         Call<RecipesResponse> call = likedRecipesApi.getLikedRecipes(userId);
         call.enqueue(new Callback<RecipesResponse>() {
             @Override
@@ -85,21 +93,28 @@ public class LikedRecipesRepository {
                         saveToCache(userId, recipes);
                         callback.onRecipesLoaded(recipes);
                     } else {
-                        callback.onDataNotAvailable("Ошибка в ответе сервера");
+                        if (cachedResult.isSuccess()) {
+                           callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
+                        } else {
+                           callback.onDataNotAvailable("Ошибка в ответе сервера: " + recipesResponse.getMessage());
+                        }
                     }
                 } else {
-                    callback.onDataNotAvailable("Ошибка HTTP: " + response.code());
+                    if (cachedResult.isSuccess()) {
+                           callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
+                     } else {
+                        callback.onDataNotAvailable("Ошибка HTTP: " + response.code());
+                     }
                 }
             }
             
             @Override
             public void onFailure(Call<RecipesResponse> call, Throwable t) {
-                callback.onDataNotAvailable("Ошибка сети: " + t.getMessage());
-                Result<List<Recipe>> cachedResult = loadFromCache(userId);
-                if (cachedResult.isSuccess() && !isCacheExpired(userId)) {
+                if (cachedResult.isSuccess()) {
                     callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
-                    return;
-                }
+                 } else {
+                    callback.onDataNotAvailable("Ошибка сети: " + t.getMessage());
+                 }
             }
         });
     }
@@ -114,11 +129,12 @@ public class LikedRecipesRepository {
                 JSONObject recipeJson = new JSONObject();
                 recipeJson.put("id", recipe.getId());
                 recipeJson.put("title", recipe.getTitle());
-                recipeJson.put("ingredients", recipe.getIngredients());
-                recipeJson.put("instructions", recipe.getInstructions());
+                recipeJson.put("ingredients", gson.toJson(recipe.getIngredients()));
+                recipeJson.put("instructions", gson.toJson(recipe.getSteps()));
                 recipeJson.put("created_at", recipe.getCreated_at());
                 recipeJson.put("userId", recipe.getUserId());
                 recipeJson.put("photo", recipe.getPhoto_url());
+                recipeJson.put("isLiked", recipe.isLiked());
                 recipesArray.put(recipeJson);
             }
             SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
@@ -126,9 +142,9 @@ public class LikedRecipesRepository {
             editor.putString(LIKED_RECIPES_CACHE_KEY + "_" + userId, recipesArray.toString());
             editor.putLong(LAST_UPDATE_TIME_KEY + "_" + userId, System.currentTimeMillis());
             editor.apply();
+            Log.d(TAG, "Сохранено в кэш лайкнутых рецептов: " + recipes.size());
         } catch (JSONException e) {
             Log.e(TAG, "Ошибка при кэшировании рецептов", e);
-
         }
     }
     
@@ -142,25 +158,39 @@ public class LikedRecipesRepository {
             if (cachedRecipes != null && !cachedRecipes.isEmpty()) {
                 JSONArray recipesArray = new JSONArray(cachedRecipes);
                 List<Recipe> recipes = new ArrayList<>();
+                Type ingredientListType = new TypeToken<ArrayList<Ingredient>>() {}.getType();
+                Type stepListType = new TypeToken<ArrayList<Step>>() {}.getType();
+
                 for (int i = 0; i < recipesArray.length(); i++) {
                     JSONObject recipeJson = recipesArray.getJSONObject(i);
                     Recipe recipe = new Recipe();
                     recipe.setId(recipeJson.optInt("id", 0));
                     recipe.setTitle(recipeJson.optString("title", ""));
-                    recipe.setIngredients(recipeJson.optString("ingredients", ""));
-                    recipe.setInstructions(recipeJson.optString("instructions", ""));
+
+                    String ingredientsString = recipeJson.optString("ingredients", "");
+                    String stepsString = recipeJson.optString("instructions", "");
+
+                    List<Ingredient> ingredients = gson.fromJson(ingredientsString, ingredientListType);
+                    List<Step> steps = gson.fromJson(stepsString, stepListType);
+
+                    recipe.setIngredients(ingredients == null ? new ArrayList<>() : new ArrayList<>(ingredients));
+                    recipe.setSteps(steps == null ? new ArrayList<>() : new ArrayList<>(steps));
+
                     recipe.setPhoto_url(recipeJson.optString("photo", ""));
                     recipe.setCreated_at(recipeJson.optString("created_at", ""));
                     recipe.setUserId(recipeJson.optString("userId", ""));
+                    recipe.setLiked(recipeJson.optBoolean("isLiked", true));
                     recipes.add(recipe);
                 }
+                 Log.d(TAG, "Загружено из кэша лайкнутых рецептов: " + recipes.size());
                 return new Result.Success<>(recipes);
             } else {
+                 Log.d(TAG, "Кэш лайкнутых рецептов пуст или отсутствует");
                 return new Result.Error<>("Кэш пуст");
             }
         } catch (JSONException e) {
             Log.e(TAG, "Ошибка при чтении кэша", e);
-            return new Result.Error<>("Ошибка при чтении кэша");
+            return new Result.Error<>("Ошибка при чтении кэша: " + e.getMessage());
         }
     }
     
@@ -170,7 +200,9 @@ public class LikedRecipesRepository {
     private boolean isCacheExpired(String userId) {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         long lastUpdateTime = prefs.getLong(LAST_UPDATE_TIME_KEY + "_" + userId, 0);
-        return System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+        boolean expired = System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+        Log.d(TAG, "Проверка истечения кэша: " + (expired ? "Истек" : "Актуален"));
+        return expired;
     }
     
     /**
@@ -193,18 +225,8 @@ public class LikedRecipesRepository {
      */
     public void updateLikeStatus(int recipeId, String userId, boolean isLiked) {
         try {
-            JSONObject jsonObject = new JSONObject();
-            jsonObject.put("recipeId", recipeId);
-            jsonObject.put("userId", userId);
-            
-            Log.d(TAG, "Отправка запроса на обновление статуса лайка: recipeId=" + recipeId + ", userId=" + userId + ", isLiked=" + isLiked);
-            
-            // Очищаем кэш, чтобы обеспечить актуальность данных при следующей загрузке
+            Log.d(TAG, "Обновление статуса лайка (заглушка): recipeId=" + recipeId + ", userId=" + userId + ", isLiked=" + isLiked);
             clearCache(userId);
-            
-            // Здесь может быть вызов API для обновления статуса лайка на сервере
-            // Это заглушка, поскольку в текущей реализации этот метод вызывается из других мест
-            Log.d(TAG, "Статус лайка обновлен: " + recipeId + ", новый статус: " + isLiked);
         } catch (Exception e) {
             Log.e(TAG, "Ошибка при обновлении статуса лайка", e);
         }

@@ -4,8 +4,6 @@ import android.Manifest;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -25,33 +23,51 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.ViewModelProvider;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.cooking.R;
+import com.example.cooking.Recipe.Ingredient;
+import com.example.cooking.Recipe.Step;
+import com.example.cooking.ui.adapters.IngredientAdapter;
+import com.example.cooking.ui.adapters.StepAdapter;
 import com.example.cooking.ui.viewmodels.AddRecipeViewModel;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+
+import java.util.ArrayList;
 
 /**
  * Активность для добавления нового рецепта
  * Использует AddRecipeViewModel для управления бизнес-логикой
  */
-public class AddRecipeActivity extends AppCompatActivity {
+public class AddRecipeActivity extends AppCompatActivity implements
+        IngredientAdapter.IngredientUpdateListener,
+        StepAdapter.StepUpdateListener {
     private static final String TAG = "AddRecipeActivity";
     private static final int REQUEST_STORAGE_PERMISSION = 1001;
     private static final int REQUEST_PICK_IMAGE = 1002;
     
     // UI компоненты
     private TextInputEditText titleEditText;
-    private TextInputEditText ingredientsEditText;
-    private TextInputEditText instructionsEditText;
     private Button saveButton;
     private ProgressBar progressBar;
     private ImageView recipeImageView;
     private TextInputLayout titleInputLayout;
-    private TextInputLayout ingredientsInputLayout;
-    private TextInputLayout instructionsInputLayout;
     private TextView textImageView;
-    
+    private TextView ingredientsErrorTextView;
+    private TextView stepsErrorTextView;
+
+    // Новые UI компоненты для RecyclerView
+    private RecyclerView ingredientsRecyclerView;
+    private RecyclerView stepsRecyclerView;
+    private Button addIngredientButton;
+    private Button addStepButton;
+
+    // Адаптеры
+    private IngredientAdapter ingredientAdapter;
+    private StepAdapter stepAdapter;
+
     // ViewModel
     private AddRecipeViewModel viewModel;
 
@@ -70,6 +86,9 @@ public class AddRecipeActivity extends AppCompatActivity {
         
         // Инициализируем UI компоненты
         initViews();
+        
+        // Настраиваем RecyclerView
+        setupRecyclerViews();
         
         // Настраиваем наблюдателей LiveData
         setupObservers();
@@ -94,18 +113,41 @@ public class AddRecipeActivity extends AppCompatActivity {
      */
     private void initViews() {
         titleEditText = findViewById(R.id.recipe_title);
-        ingredientsEditText = findViewById(R.id.recipe_ingredients);
-        instructionsEditText = findViewById(R.id.recipe_instructions);
         saveButton = findViewById(R.id.save_button);
         progressBar = findViewById(R.id.progress_bar);
         recipeImageView = findViewById(R.id.recipe_image);
         titleInputLayout = findViewById(R.id.recipe_title_layout);
-        ingredientsInputLayout = findViewById(R.id.recipe_ingredients_layout);
-        instructionsInputLayout = findViewById(R.id.recipe_instructions_layout);
         textImageView = findViewById(R.id.textImage);
-        
+
+        // Инициализация RecyclerView и кнопок добавления
+        ingredientsRecyclerView = findViewById(R.id.ingredients_recyclerview);
+        stepsRecyclerView = findViewById(R.id.steps_recyclerview);
+        addIngredientButton = findViewById(R.id.add_ingredient_button);
+        addStepButton = findViewById(R.id.add_step_button);
+
         recipeImageView.setImageResource(R.drawable.select_recipe_view);
         Log.d(TAG, "initViews: Все UI элементы инициализированы");
+    }
+    
+    /**
+     * Настраивает RecyclerView
+     */
+    private void setupRecyclerViews() {
+        // Создаем адаптеры, передавая 'this' как слушателя
+        ingredientAdapter = new IngredientAdapter(this);
+        stepAdapter = new StepAdapter(this, this);
+
+        // Настраиваем RecyclerView для ингредиентов
+        ingredientsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        ingredientsRecyclerView.setAdapter(ingredientAdapter);
+        ingredientsRecyclerView.setNestedScrollingEnabled(false);
+
+        // Настраиваем RecyclerView для шагов
+        stepsRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        stepsRecyclerView.setAdapter(stepAdapter);
+        stepsRecyclerView.setNestedScrollingEnabled(false);
+
+        Log.d(TAG, "setupRecyclerViews: RecyclerView настроены");
     }
     
     /**
@@ -119,7 +161,7 @@ public class AddRecipeActivity extends AppCompatActivity {
             if (isLoading) {
                 saveButton.setText("Сохранение...");
             } else {
-                saveButton.setText("Сохранить");
+                saveButton.setText("Сохранить рецепт");
             }
         });
         
@@ -132,51 +174,83 @@ public class AddRecipeActivity extends AppCompatActivity {
         
         // Наблюдаем за успешным сохранением
         viewModel.getSaveSuccess().observe(this, success -> {
-            if (success) {
+            if (success != null && success) {
                 Toast.makeText(this, "Рецепт успешно сохранен", Toast.LENGTH_LONG).show();
                 setResult(RESULT_OK);
                 finish();
             }
         });
         
-        // Наблюдаем за ошибками валидации
+        // Наблюдаем за ошибками валидации Title
         viewModel.getTitleError().observe(this, error -> {
-            if (error != null) {
-                titleInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-                titleInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-                titleInputLayout.setError(error);
-            } else {
-                titleInputLayout.setError(null);
+            titleInputLayout.setError(error);
+            titleInputLayout.setErrorTextColor(error != null ? ColorStateList.valueOf(Color.RED) : null);
+        });
+        
+        // Наблюдаем за ошибками валидации списка Ингредиентов
+        viewModel.getIngredientsListError().observe(this, error -> {
+            if (ingredientsErrorTextView != null) {
+                ingredientsErrorTextView.setVisibility(error != null ? View.VISIBLE : View.GONE);
+                ingredientsErrorTextView.setText(error);
+            } else if (error != null) {
+                Toast.makeText(this, "Ошибка ингредиентов: " + error, Toast.LENGTH_SHORT).show();
             }
         });
         
-        viewModel.getIngredientsError().observe(this, error -> {
-            if (error != null) {
-                ingredientsInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-                ingredientsInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-                ingredientsInputLayout.setError(error);
-            } else {
-                ingredientsInputLayout.setError(null);
+        // Наблюдаем за ошибками валидации списка Шагов
+        viewModel.getStepsListError().observe(this, error -> {
+            if (stepsErrorTextView != null) {
+                stepsErrorTextView.setVisibility(error != null ? View.VISIBLE : View.GONE);
+                stepsErrorTextView.setText(error);
+            } else if (error != null) {
+                Toast.makeText(this, "Ошибка шагов: " + error, Toast.LENGTH_SHORT).show();
             }
         });
         
-        viewModel.getInstructionsError().observe(this, error -> {
-            if (error != null) {
-                instructionsInputLayout.setBoxStrokeErrorColor(ColorStateList.valueOf(Color.RED));
-                instructionsInputLayout.setErrorTextColor(ColorStateList.valueOf(Color.RED));
-                instructionsInputLayout.setError(error);
-            } else {
-                instructionsInputLayout.setError(null);
-            }
-        });
-        
+        // Наблюдаем за ошибками изображения
         viewModel.getImageError().observe(this, error -> {
             if (error != null) {
                 textImageView.setTextColor(Color.RED);
                 textImageView.setText(error);
             } else {
-                textImageView.setTextColor(Color.BLACK);
-                textImageView.setText("Выберите изображение");
+                textImageView.setTextColor(ContextCompat.getColor(this, android.R.color.black));
+                if (viewModel.hasImage()) {
+                    textImageView.setText("Изображение выбрано");
+                } else {
+                    textImageView.setText("Выберите изображение*");
+                }
+            }
+        });
+        
+        // Наблюдаем за списком ингредиентов
+        viewModel.getIngredients().observe(this, ingredients -> {
+            Log.d(TAG, "Список ингредиентов обновлен, количество: " + (ingredients != null ? ingredients.size() : 0));
+            // Создаем новый список, чтобы DiffUtil в ListAdapter корректно обработал изменения
+            ingredientAdapter.submitList(ingredients != null ? new ArrayList<>(ingredients) : null);
+            // Прокручиваем к последнему элементу, если он был добавлен
+            if (ingredients != null && !ingredients.isEmpty()) {
+                ingredientsRecyclerView.post(() -> {
+                    int position = ingredients.size() - 1;
+                    if (position >= 0) {
+                        ingredientsRecyclerView.smoothScrollToPosition(position);
+                    }
+                });
+            }
+        });
+        
+        // Наблюдаем за списком шагов
+        viewModel.getSteps().observe(this, steps -> {
+            Log.d(TAG, "Список шагов обновлен, количество: " + (steps != null ? steps.size() : 0));
+            // Создаем новый список, чтобы DiffUtil в ListAdapter корректно обработал изменения
+            stepAdapter.submitList(steps != null ? new ArrayList<>(steps) : null);
+            // Прокручиваем к последнему элементу, если он был добавлен
+            if (steps != null && !steps.isEmpty()) {
+                stepsRecyclerView.post(() -> {
+                    int position = steps.size() - 1;
+                    if (position >= 0) {
+                        stepsRecyclerView.smoothScrollToPosition(position);
+                    }
+                });
             }
         });
     }
@@ -199,38 +273,22 @@ public class AddRecipeActivity extends AppCompatActivity {
             }
         });
         
-        // Обработчик изменения текста для ингредиентов
-        ingredientsEditText.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                viewModel.setIngredients(s.toString());
-            }
-        });
-        
-        // Обработчик изменения текста для инструкций
-        instructionsEditText.addTextChangedListener(new TextWatcher() {
-            @Override
-            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-            @Override
-            public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-            @Override
-            public void afterTextChanged(Editable s) {
-                viewModel.setInstructions(s.toString());
-            }
-        });
-        
         // Обработчик клика по изображению
         recipeImageView.setOnClickListener(view -> {
             Log.d(TAG, "onClick: Нажата кнопка выбора изображения");
             checkStoragePermissionAndPickImage();
+        });
+        
+        // Обработчик клика по кнопке "Добавить ингредиент"
+        addIngredientButton.setOnClickListener(v -> {
+            Log.d(TAG, "onClick: Нажата кнопка 'Добавить ингредиент'");
+            viewModel.addEmptyIngredient();
+        });
+        
+        // Обработчик клика по кнопке "Добавить шаг"
+        addStepButton.setOnClickListener(v -> {
+            Log.d(TAG, "onClick: Нажата кнопка 'Добавить шаг'");
+            viewModel.addEmptyStep();
         });
         
         // Обработчик клика по кнопке "Сохранить"
@@ -244,23 +302,19 @@ public class AddRecipeActivity extends AppCompatActivity {
      * Проверяет разрешение на доступ к хранилищу и открывает галерею
      */
     private void checkStoragePermissionAndPickImage() {
-        // Определяем, какое разрешение запрашивать в зависимости от версии Android
         String permission;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) { // Android 13+ (API 33+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permission = Manifest.permission.READ_MEDIA_IMAGES;
         } else {
             permission = Manifest.permission.READ_EXTERNAL_STORAGE;
         }
         
         if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            // Запрашиваем разрешение
             ActivityCompat.requestPermissions(this, new String[]{permission}, REQUEST_STORAGE_PERMISSION);
             Log.d(TAG, "checkStoragePermissionAndPickImage: Запрошено разрешение: " + permission);
-            // Показываем пользователю, почему нужно разрешение
             Toast.makeText(this, "Для выбора фото необходимо предоставить разрешение на доступ к галерее", 
                     Toast.LENGTH_LONG).show();
         } else {
-            // Если разрешение уже есть, открываем галерею
             openGallery();
         }
     }
@@ -303,11 +357,9 @@ public class AddRecipeActivity extends AppCompatActivity {
             if (selectedImageUri != null) {
                 Log.d(TAG, "onActivityResult: Изображение выбрано: " + selectedImageUri);
                 
-                // Отображаем выбранное изображение в UI
                 recipeImageView.setImageURI(selectedImageUri);
                 textImageView.setText("Изображение выбрано");
                 
-                // Обрабатываем изображение через ViewModel
                 viewModel.processSelectedImage(selectedImageUri);
             }
         }
@@ -316,18 +368,31 @@ public class AddRecipeActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == android.R.id.home) {
-            // Спрашиваем пользователя о выходе, если есть введенные данные
-            if (!titleEditText.getText().toString().isEmpty() || 
-                !ingredientsEditText.getText().toString().isEmpty() || 
-                !instructionsEditText.getText().toString().isEmpty()) {
-                    
-                showExitConfirmDialog();
-            } else {
-                finish();
-            }
+            checkForUnsavedChangesAndExit();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+    
+    @Override
+    public void onBackPressed() {
+        checkForUnsavedChangesAndExit();
+    }
+    
+    /**
+     * Проверяет наличие несохраненных изменений и предлагает выйти
+     */
+    private void checkForUnsavedChangesAndExit() {
+        boolean titleChanged = titleEditText.getText() != null && !titleEditText.getText().toString().isEmpty();
+        boolean imageSelected = viewModel.hasImage();
+        boolean ingredientsExist = viewModel.getIngredients().getValue() != null && !viewModel.getIngredients().getValue().isEmpty();
+        boolean stepsExist = viewModel.getSteps().getValue() != null && !viewModel.getSteps().getValue().isEmpty();
+
+        if (titleChanged || imageSelected || ingredientsExist || stepsExist) {
+            showExitConfirmDialog();
+        } else {
+            finish();
+        }
     }
     
     /**
@@ -344,17 +409,30 @@ public class AddRecipeActivity extends AppCompatActivity {
             .setNegativeButton("Нет", (dialog, which) -> dialog.dismiss())
             .show();
     }
-    
+
+    // --- Реализация слушателей адаптеров ---
+
     @Override
-    public void onBackPressed() {
-        // Спрашиваем пользователя о выходе, если есть введенные данные
-        if (!titleEditText.getText().toString().isEmpty() || 
-            !ingredientsEditText.getText().toString().isEmpty() || 
-            !instructionsEditText.getText().toString().isEmpty()) {
-                
-            showExitConfirmDialog();
-        } else {
-            super.onBackPressed();
-        }
+    public void onIngredientUpdated(int position, Ingredient ingredient) {
+        Log.d(TAG, "onIngredientUpdated: pos=" + position + ", data=" + ingredient);
+        viewModel.updateIngredient(position, ingredient);
+    }
+
+    @Override
+    public void onIngredientRemoved(int position) {
+        Log.d(TAG, "onIngredientRemoved: pos=" + position);
+        viewModel.removeIngredient(position);
+    }
+
+    @Override
+    public void onStepUpdated(int position, Step step) {
+        Log.d(TAG, "onStepUpdated: pos=" + position + ", data=" + step);
+        viewModel.updateStep(position, step);
+    }
+
+    @Override
+    public void onStepRemoved(int position) {
+        Log.d(TAG, "onStepRemoved: pos=" + position);
+        viewModel.removeStep(position);
     }
 }

@@ -4,6 +4,22 @@
     <string name="search">Найти рецепт...</string>
     <string name="no_search_results">По запросу \"%1$s\" ничего не найдено</string>
     <string name="search_error">Ошибка при поиске: %1$s</string>
+
+    <string name="default_web_client_id">735196544943-8nha6idmte73q0orur9m37taklrglv9g.apps.googleusercontent.com</string>
+    
+    <!-- Типы ингредиентов -->
+    <string-array name="ingredient_types">
+        <item>шт.</item>
+        <item>г</item>
+        <item>кг</item>
+        <item>мл</item>
+        <item>л</item>
+        <item>ст.л.</item>
+        <item>ч.л.</item>
+        <item>стакан</item>
+        <item>по вкусу</item>
+    </string-array>
+
     <string name="default_web_client_id">735196544943-8nha6idmte73q0orur9m37taklrglv9g.apps.googleusercontent.com
     </string>
     <!-- TODO: Remove or change this placeholder text -->
@@ -21,4 +37,5 @@
     <string name="attachment_title">Download incoming attachments</string>
     <string name="attachment_summary_on">Automatically download attachments for incoming emails</string>
     <string name="attachment_summary_off">Only download attachments when manually requested</string>
+
 </resources>

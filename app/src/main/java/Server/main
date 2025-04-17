@@ -1,5 +1,5 @@
 import os
-
+import json
 from flask import Flask, request, jsonify, url_for, send_from_directory
 import pymysql
 import bcrypt
@@ -13,7 +13,6 @@ from firebase_admin import credentials, messaging
 # Инициализация Firebase Admin
 cred = credentials.Certificate('cooking-81977-firebase-adminsdk-fbsvc-649d1c1ad7.json')
 firebase_admin.initialize_app(cred)
-
 
 app = Flask(__name__)
 
@@ -38,7 +37,7 @@ def send_recipe_event(event_type, recipe_id):
     # Рассылаем всем подписчикам топика "recipes"
     message = messaging.Message(
         data={
-            'type':     event_type,   # "recipe_added", "recipe_updated","recipe_deleted"
+            'type': event_type,  # "recipe_added", "recipe_updated","recipe_deleted"
             'recipeId': str(recipe_id)
         },
         topic='recipes'
@@ -48,7 +47,6 @@ def send_recipe_event(event_type, recipe_id):
         print(f"FCM sent: {response}")
     except Exception as e:
         print(f"FCM error: {e}")
-
 
 
 # Функция для проверки допустимого расширения файла
@@ -161,7 +159,8 @@ def register():
                     if cursor.fetchone() is not None:
                         conn.close()
                         print(f"Registration failed: User with firebaseId {firebase_id} already exists")
-                        return jsonify({'success': False, 'message': 'Пользователь с таким Firebase ID уже существует'}), 409
+                        return jsonify(
+                            {'success': False, 'message': 'Пользователь с таким Firebase ID уже существует'}), 409
 
                 # Проверяем, существует ли уже пользователь с таким email
                 check_sql = "SELECT * FROM users WHERE email=%s"
@@ -205,20 +204,81 @@ def register():
         return jsonify({'success': False, 'message': f'Server error: {str(e)}'}), 500
 
 
+
 @app.route('/addrecipes', methods=['POST'])
 def create_recipe():
+    # Получаем данные из формы
     title = request.form.get('title')
-    ingredients = request.form.get('ingredients')
-    instructions = request.form.get('instructions')
+    ingredients_data = request.form.get('ingredients')
+    instructions_data = request.form.get('instructions')
     user_id = request.form.get('userId')
     recipe_id = request.form.get('recipeId')
+    permission_str = request.form.get('permission')
+    
+    # Преобразуем permission в число, обрабатываем возможную ошибку
+    try:
+        permission = int(permission_str) if permission_str else 1  # По умолчанию 1, если не передано
+    except ValueError:
+        permission = 1  # По умолчанию 1, если не удалось преобразовать
+    
+    # Лог полученных данных для отладки
+    print(f"Received data - title: {title}, userId: {user_id}, recipeId: {recipe_id}")
+    print(f"Ingredients data: {ingredients_data}")
+    print(f"Instructions data: {instructions_data}")
+    
+    # Проверяем, что все обязательные поля заполнены
+    if not (title and ingredients_data and instructions_data and user_id):
+        return jsonify({
+            'success': False, 
+            'message': 'Все поля (title, ingredients, instructions, userId) обязательны'
+        }), 400
+    
+    # Пытаемся преобразовать данные из JSON в строку для хранения
+    try:
+        # Проверяем и преобразуем данные ингредиентов
+        if isinstance(ingredients_data, str):
+            try:
+                # Пытаемся распарсить JSON строку
+                json.loads(ingredients_data)
+                # Если успешно, сохраняем как есть
+                ingredients = ingredients_data
+            except json.JSONDecodeError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Некорректный формат данных ингредиентов. Ожидается JSON.'
+                }), 400
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Некорректный формат данных ингредиентов'
+            }), 400
+        
+        # Проверяем и преобразуем данные инструкций
+        if isinstance(instructions_data, str):
+            try:
+                # Пытаемся распарсить JSON строку
+                json.loads(instructions_data)
+                # Если успешно, сохраняем как есть
+                instructions = instructions_data
+            except json.JSONDecodeError:
+                return jsonify({
+                    'success': False,
+                    'message': 'Некорректный формат данных инструкций. Ожидается JSON.'
+                }), 400
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Некорректный формат данных инструкций'
+            }), 400
+    except Exception as e:
+        print(f"Ошибка обработки JSON данных: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Ошибка обработки данных: {str(e)}'
+        }), 400
 
     # Если recipeId отсутствует или равно "0", создаем новый рецепт
     if not recipe_id or recipe_id == "0":
-        # Проверяем, что все обязательные поля заполнены
-        if not (title and ingredients and instructions and user_id):
-            return jsonify({'success': False, 'message': 'Все поля (title, ingredients, instructions, userId) обязательны'}), 400
-
         photo_url = None
         if 'photo' in request.files:
             photo_file = request.files['photo']
@@ -234,60 +294,80 @@ def create_recipe():
             conn = get_db_connection()
             with conn.cursor() as cursor:
                 # Добавляем поле updated_at с текущим временем
-                sql_insert = "INSERT INTO recipes (title, ingredients, instructions, user_id, photo ) VALUES (%s, %s, %s, %s, %s)"
+                sql_insert = "INSERT INTO recipes (title, ingredients, instructions, user_id, photo) VALUES (%s, %s, %s, %s, %s)"
                 cursor.execute(sql_insert, (title, ingredients, instructions, user_id, photo_url))
-                sql_insert = "SELECT id FROM recipes WHERE title = %s AND user_id = %s AND instructions = %s AND ingredients = %s;"
-                cursor.execute(sql_insert, (title,user_id, instructions, ingredients ))
+                new_id = cursor.lastrowid
             conn.commit()
             conn.close()
 
-            new_id = cursor.lastrowid
             send_recipe_event('recipe_added', new_id)
 
-            return jsonify({'success': True, 'message': 'Рецепт успешно создан'})
+            return jsonify({'success': True, 'message': 'Рецепт успешно создан', 'recipeId': new_id})
         except Exception as e:
             print("Ошибка при создании рецепта:", e)
             return jsonify({'success': False, 'error': str(e)}), 500
     else:
         # Если recipeId присутствует, обновляем существующий рецепт
-        if not (title and ingredients and instructions and user_id):
-            return jsonify({'success': False, 'message': 'Все поля (title, ingredients, instructions, userId) обязательны'}), 400
-
         photo_url = None
         if 'photo' in request.files:
             photo_file = request.files['photo']
-            if photo_file and allowed_file(photo_file.filename):
-                filename = secure_filename(photo_file.filename)
-                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                photo_file.save(file_path)
-                photo_url = url_for('uploaded_file', filename=filename, _external=True)
-            else:
-                return jsonify({'success': False, 'message': 'Неверный формат файла'}), 400
+            # Проверяем, что файл не пустой (например, placeholder который мы отправляем)
+            if photo_file and photo_file.filename != '':
+                if allowed_file(photo_file.filename):
+                    filename = secure_filename(photo_file.filename)
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    photo_file.save(file_path)
+                    photo_url = url_for('uploaded_file', filename=filename, _external=True)
+                else:
+                    return jsonify({'success': False, 'message': 'Неверный формат файла'}), 400
+            # Если filename пустой, значит фото не меняли, photo_url остается None
 
         try:
             conn = get_db_connection()
             with conn.cursor() as cursor:
-                # Добавляем обновление updated_at
-                if photo_url:
-                    sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s, photo=%s WHERE id=%s AND user_id=%s"
-                    cursor.execute(sql_update, (title, ingredients, instructions, photo_url, recipe_id, user_id))
-                else:
-                    # Если фото не изменено, не обновляем его
-                    sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s  WHERE id=%s AND user_id=%s"
-                    cursor.execute(sql_update, (title, ingredients, instructions, recipe_id, user_id))
+                rows_affected = 0
+                # Используем преобразованное числовое значение permission
+                if permission == 2:  # Теперь сравнение корректное
+                    if photo_url:  # Если загружено новое фото
+                        sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s, photo=%s, updated_at=NOW() WHERE id=%s"
+                        cursor.execute(sql_update, (title, ingredients, instructions, photo_url, recipe_id))
+                    else:  # Если фото не меняли (photo_url is None)
+                        sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s, updated_at=NOW() WHERE id=%s"
+                        cursor.execute(sql_update, (title, ingredients, instructions, recipe_id))
+                else:  # Если не админ, проверяем user_id
+                    if photo_url:  # Если загружено новое фото
+                        sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s, photo=%s, updated_at=NOW() WHERE id=%s AND user_id=%s"
+                        cursor.execute(sql_update, (title, ingredients, instructions, photo_url, recipe_id, user_id))
+                    else:  # Если фото не меняли
+                        sql_update = "UPDATE recipes SET title=%s, ingredients=%s, instructions=%s, updated_at=NOW() WHERE id=%s AND user_id=%s"
+                        cursor.execute(sql_update, (title, ingredients, instructions, recipe_id, user_id))
 
-                if cursor.rowcount == 0:
+                rows_affected = cursor.rowcount  # Сохраняем количество измененных строк
+
+            if rows_affected == 0:
+                if permission != 2:
                     conn.rollback()
                     conn.close()
-                    return jsonify({'success': False, 'message': 'Редактирование не выполнено. Возможно, вы не являетесь создателем рецепта.'}), 403
+                    return jsonify({'success': False, 'message': 'Редактирование не выполнено. Возможно, вы не являетесь создателем рецепта или рецепт не найден.'}), 403
+                else:
+                    # Для админа ошибка, если 0 строк изменено, скорее означает, что рецепт не найден
+                    conn.rollback()
+                    conn.close()
+                    return jsonify({'success': False, 'message': f'Рецепт с ID {recipe_id} не найден.'}), 404
+
             conn.commit()
             conn.close()
 
+            # Отправляем событие об обновлении рецепта
             send_recipe_event('recipe_updated', recipe_id)
 
             return jsonify({'success': True, 'message': 'Рецепт успешно изменен'})
         except Exception as e:
             print("Ошибка при обновлении рецепта:", e)
+            # Откатываем транзакцию в случае ошибки
+            if conn:
+                conn.rollback()
+                conn.close()
             return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -311,7 +391,6 @@ def delete_recipe():
 
             conn.commit()
             send_recipe_event('recipe_deleted', id)
-
 
         return jsonify({'success': True, 'message': 'Рецепт удален'})
 
@@ -337,7 +416,7 @@ def get_recipes():
         conn = get_db_connection()
         with conn.cursor() as cursor:
             # Используем alias "userId" для поля user_id
-            sql = "SELECT id, title, ingredients, instructions, created_at, user_id as userId, photo FROM recipes ORDER BY id DESC"
+            sql = "SELECT id, title, ingredients, instructions, created_at, updated_at, user_id as userId, photo FROM recipes ORDER BY id DESC"
             cursor.execute(sql)
             recipes = cursor.fetchall()
         conn.close()
@@ -346,6 +425,8 @@ def get_recipes():
         for recipe in recipes:
             if 'created_at' in recipe and recipe['created_at']:
                 recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+            if 'updated_at' in recipe and recipe['updated_at']:
+                recipe['updated_at'] = recipe['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
         response = {
             'success': True,
             'recipes': recipes,
@@ -360,6 +441,7 @@ def get_recipes():
             'recipes': []
         }), 500
 
+
 # Эндпоинт для получения одного рецепта по его ID
 @app.route('/recipe/<int:recipe_id>', methods=['GET'])
 def get_recipe(recipe_id):
@@ -369,7 +451,7 @@ def get_recipe(recipe_id):
             sql = """
                 SELECT 
                   id, title, ingredients, instructions, 
-                  created_at, 
+                  created_at, updated_at,
                   user_id AS userId, photo 
                 FROM recipes 
                 WHERE id = %s
@@ -384,14 +466,14 @@ def get_recipe(recipe_id):
         # Форматируем даты для JSON
         if recipe.get('created_at'):
             recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+        if recipe.get('updated_at'):
+            recipe['updated_at'] = recipe['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
 
         return jsonify({'success': True, 'recipe': recipe}), 200
 
     except Exception as e:
         print(f"Ошибка при получении рецепта: {e}")
         return jsonify({'success': False, 'message': f'Ошибка сервера: {e}'}), 500
-
-
 
 
 # Добавление лайка
@@ -443,7 +525,7 @@ def get_liked_recipes():
         with conn.cursor() as cursor:
             # Выбираем рецепты, присоединив таблицу user_likes по recipe_id
             sql = """
-                SELECT r.id, r.title, r.ingredients, r.instructions, r.created_at, r.photo, r.user_id as userId
+                SELECT r.id, r.title, r.ingredients, r.instructions, r.created_at, r.updated_at, r.photo, r.user_id as userId
                 FROM recipes r 
                 JOIN user_likes ul ON r.id = ul.recipe_id
                 WHERE ul.user_id = %s
@@ -457,6 +539,8 @@ def get_liked_recipes():
         for recipe in recipes:
             if recipe.get('created_at'):
                 recipe['created_at'] = recipe['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+            if recipe.get('updated_at'):
+                recipe['updated_at'] = recipe['updated_at'].strftime('%Y-%m-%d %H:%M:%S')
 
         return jsonify({'success': True, 'recipes': recipes, 'count': len(recipes)})
     except Exception as e:

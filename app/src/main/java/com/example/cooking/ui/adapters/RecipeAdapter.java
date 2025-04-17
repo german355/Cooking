@@ -133,7 +133,7 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
             intent.putExtra("recipe_id", recipe.getId());
             intent.putExtra("recipe_title", recipe.getTitle());
             intent.putExtra("recipe_ingredients", recipe.getIngredients());
-            intent.putExtra("recipe_instructions", recipe.getInstructions());
+            intent.putExtra("recipe_instructions", recipe.getSteps());
             intent.putExtra("Created_at", recipe.getCreated_at());
             intent.putExtra("userId", recipe.getUserId());
             intent.putExtra("photo_url", recipe.getPhoto_url());

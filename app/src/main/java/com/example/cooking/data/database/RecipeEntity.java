@@ -3,19 +3,27 @@ package com.example.cooking.data.database;
 import androidx.annotation.NonNull;
 import androidx.room.Entity;
 import androidx.room.PrimaryKey;
+import androidx.room.TypeConverters;
 
+import com.example.cooking.Recipe.Ingredient;
 import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.Recipe.Step;
+import com.example.cooking.data.database.converters.DataConverters;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Entity класс для хранения рецептов в Room Database
  */
 @Entity(tableName = "recipes")
+@TypeConverters(DataConverters.class)
 public class RecipeEntity {
     @PrimaryKey
     private int id;
     private String title;
-    private String ingredients;
-    private String instructions;
+    private List<Ingredient> ingredients;
+    private List<Step> instructions;
     private String created_at;
     private String userId;
     private String photo_url;
@@ -30,7 +38,7 @@ public class RecipeEntity {
         this.id = recipe.getId();
         this.title = recipe.getTitle();
         this.ingredients = recipe.getIngredients();
-        this.instructions = recipe.getInstructions();
+        this.instructions = recipe.getSteps();
         this.created_at = recipe.getCreated_at();
         this.userId = recipe.getUserId();
         this.photo_url = recipe.getPhoto_url();
@@ -42,8 +50,8 @@ public class RecipeEntity {
         Recipe recipe = new Recipe();
         recipe.setId(id);
         recipe.setTitle(title);
-        recipe.setIngredients(ingredients);
-        recipe.setInstructions(instructions);
+        recipe.setIngredients(ingredients == null ? new ArrayList<>() : new ArrayList<>(ingredients));
+        recipe.setSteps(instructions == null ? new ArrayList<>() : new ArrayList<>(instructions));
         recipe.setCreated_at(created_at);
         recipe.setUserId(userId);
         recipe.setPhoto_url(photo_url);
@@ -68,19 +76,19 @@ public class RecipeEntity {
         this.title = title;
     }
 
-    public String getIngredients() {
+    public List<Ingredient> getIngredients() {
         return ingredients;
     }
 
-    public void setIngredients(String ingredients) {
+    public void setIngredients(List<Ingredient> ingredients) {
         this.ingredients = ingredients;
     }
 
-    public String getInstructions() {
+    public List<Step> getInstructions() {
         return instructions;
     }
 
-    public void setInstructions(String instructions) {
+    public void setInstructions(List<Step> instructions) {
         this.instructions = instructions;
     }
 

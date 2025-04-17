@@ -6,12 +6,15 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.util.Log;
 
+import com.example.cooking.Recipe.Ingredient;
 import com.example.cooking.Recipe.Recipe;
+import com.example.cooking.Recipe.Step;
 import com.example.cooking.config.ServerConfig;
 import com.example.cooking.network.api.RecipeApi;
 import com.example.cooking.network.responses.RecipesResponse;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -19,7 +22,9 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -56,6 +61,8 @@ public class RecipeRepository {
     
     private final Context context;
     private final RecipeApi recipeApi;
+    
+    private static final Gson gson = new Gson(); // Экземпляр Gson
     
     public interface RecipesCallback {
         void onRecipesLoaded(List<Recipe> recipes);
@@ -132,7 +139,7 @@ public class RecipeRepository {
                 .build();
         
         // Настраиваем Gson для более безопасного парсинга JSON
-        Gson gson = new GsonBuilder()
+        Gson gsonConverter = new GsonBuilder()
                 .setLenient()
                 .create();
         
@@ -140,7 +147,7 @@ public class RecipeRepository {
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(API_URL + "/")
                 .client(httpClient)
-                .addConverterFactory(GsonConverterFactory.create(gson))
+                .addConverterFactory(GsonConverterFactory.create(gsonConverter))
                 .build();
         
         //  имплементацию API
@@ -293,11 +300,12 @@ public class RecipeRepository {
                 JSONObject recipeJson = new JSONObject();
                 recipeJson.put("id", recipe.getId());
                 recipeJson.put("title", recipe.getTitle());
-                recipeJson.put("ingredients", recipe.getIngredients());
-                recipeJson.put("instructions", recipe.getInstructions());
+                recipeJson.put("ingredients", gson.toJson(recipe.getIngredients()));
+                recipeJson.put("instructions", gson.toJson(recipe.getSteps()));
                 recipeJson.put("created_at", recipe.getCreated_at());
                 recipeJson.put("userId", recipe.getUserId());
                 recipeJson.put("photo", recipe.getPhoto_url());
+                recipeJson.put("isLiked", recipe.isLiked());
                 recipesArray.put(recipeJson);
             }
             SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
@@ -305,9 +313,9 @@ public class RecipeRepository {
             editor.putString(RECIPES_CACHE_KEY, recipesArray.toString());
             editor.putLong(LAST_UPDATE_TIME_KEY, System.currentTimeMillis());
             editor.apply();
-            Log.d(TAG, "Кэшировано рецептов: " + recipes.size());
+            Log.d(TAG, "Сохранено в SharedPreferences кэш рецептов: " + recipes.size());
         } catch (JSONException e) {
-            Log.e(TAG, "Ошибка при кэшировании рецептов", e);
+            Log.e(TAG, "Ошибка при кэшировании рецептов в SharedPreferences", e);
         }
     }
     
@@ -322,27 +330,42 @@ public class RecipeRepository {
             if (cachedRecipes != null && !cachedRecipes.isEmpty()) {
                 JSONArray recipesArray = new JSONArray(cachedRecipes);
                 List<Recipe> recipes = new ArrayList<>();
+                // Определяем типы для Gson
+                Type ingredientListType = new TypeToken<ArrayList<Ingredient>>() {}.getType();
+                Type stepListType = new TypeToken<ArrayList<Step>>() {}.getType();
+
                 for (int i = 0; i < recipesArray.length(); i++) {
                     JSONObject recipeJson = recipesArray.getJSONObject(i);
                     Recipe recipe = new Recipe();
                     recipe.setId(recipeJson.optInt("id", 0));
                     recipe.setTitle(recipeJson.optString("title", ""));
-                    recipe.setIngredients(recipeJson.optString("ingredients", ""));
-                    recipe.setInstructions(recipeJson.optString("instructions", ""));
+
+                    // Десериализуем JSON строки обратно в списки
+                    String ingredientsString = recipeJson.optString("ingredients", "");
+                    String stepsString = recipeJson.optString("instructions", "");
+
+                    List<Ingredient> ingredients = gson.fromJson(ingredientsString, ingredientListType);
+                    List<Step> steps = gson.fromJson(stepsString, stepListType);
+
+                     // Проверка на null после десериализации
+                    recipe.setIngredients(ingredients == null ? new ArrayList<>() : new ArrayList<>(ingredients));
+                    recipe.setSteps(steps == null ? new ArrayList<>() : new ArrayList<>(steps));
+
                     recipe.setPhoto_url(recipeJson.optString("photo", ""));
                     recipe.setCreated_at(recipeJson.optString("created_at", ""));
-                    Log.d("Created_at", recipeJson.optString("created_at"));
                     recipe.setUserId(recipeJson.optString("userId", ""));
+                    recipe.setLiked(recipeJson.optBoolean("isLiked", false));
                     recipes.add(recipe);
                 }
-                Log.d(TAG, "Загружено из кэша рецептов: " + recipes.size());
+                 Log.d(TAG, "Загружено из SharedPreferences кэша рецептов: " + recipes.size());
                 return new Result.Success<>(recipes);
             } else {
+                 Log.d(TAG, "SharedPreferences кэш рецептов пуст");
                 return new Result.Error<>("Кэш пуст");
             }
         } catch (JSONException e) {
-            Log.e(TAG, "Ошибка при чтении кэша", e);
-            return new Result.Error<>("Ошибка при чтении кэша");
+            Log.e(TAG, "Ошибка при чтении кэша из SharedPreferences", e);
+            return new Result.Error<>("Ошибка при чтении кэша: " + e.getMessage());
         }
     }
     
@@ -352,7 +375,9 @@ public class RecipeRepository {
     private boolean isCacheExpired() {
         SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
         long lastUpdateTime = prefs.getLong(LAST_UPDATE_TIME_KEY, 0);
-        return System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+        boolean expired = System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
+        Log.d(TAG, "Проверка истечения SharedPreferences кэша: " + (expired ? "Истек" : "Актуален"));
+        return expired;
     }
     
     /**

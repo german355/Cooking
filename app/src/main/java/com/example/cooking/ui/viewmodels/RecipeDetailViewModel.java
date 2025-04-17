@@ -9,15 +9,16 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.example.cooking.Recipe.Recipe;
-import com.example.cooking.data.repositories.RecipeLocalRepository;
+import com.example.cooking.data.database.RecipeEntity;
 import com.example.cooking.data.repositories.RecipeRepository;
 import com.example.cooking.network.services.RecipeDeleter;
 import com.example.cooking.utils.MySharedPreferences;
-import com.example.cooking.ui.fragments.FavoritesFragment;
+import com.example.cooking.data.repositories.RecipeLocalRepository;
 
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -37,13 +38,14 @@ public class RecipeDetailViewModel extends AndroidViewModel {
 
     private static final String TAG = "RecipeDetailViewModel";
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-    
+
     private final OkHttpClient client;
     private final ExecutorService executor;
     private final RecipeDeleter recipeDeleter;
     private final RecipeLocalRepository localRepository;
+    private final RecipeRepository recipeRepository;
     private final MySharedPreferences preferences;
-    
+
     // LiveData для хранения состояний
     private final MutableLiveData<Recipe> recipe = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isLiked = new MutableLiveData<>(false);
@@ -58,31 +60,53 @@ public class RecipeDetailViewModel extends AndroidViewModel {
         executor = Executors.newSingleThreadExecutor();
         recipeDeleter = new RecipeDeleter(application);
         localRepository = new RecipeLocalRepository(application);
+        recipeRepository = new RecipeRepository(application);
         preferences = new MySharedPreferences(application);
     }
-    
+
     /**
-     * Инициализирует ViewModel с данными рецепта
+     * Загружает данные рецепта по ID из кэша репозитория.
+     * @param recipeId ID рецепта для загрузки.
      */
-    public void initWithRecipe(int recipeId, String title, String ingredients, String instructions, 
-                             String createdAt, String userId, String photoUrl, boolean isLiked) {
-        Recipe recipeData = new Recipe();
-        recipeData.setId(recipeId);
-        recipeData.setTitle(title);
-        recipeData.setIngredients(ingredients);
-        recipeData.setInstructions(instructions);
-        recipeData.setCreated_at(createdAt);
-        recipeData.setUserId(userId);
-        recipeData.setPhoto_url(photoUrl);
-        recipeData.setLiked(isLiked);
-        
-        this.recipe.setValue(recipeData);
-        this.isLiked.setValue(isLiked);
-        
-        // Проверяем права на редактирование
-        checkEditPermission(userId);
+    public void loadRecipe(int recipeId) {
+        if (recipeId == -1) {
+            errorMessage.postValue("Неверный ID рецепта.");
+            return;
+        }
+        Log.d(TAG, "Загрузка рецепта с ID: " + recipeId + " из кэша репозитория");
+        executeIfActive(() -> {
+            // Загружаем весь список из кэша
+            RecipeRepository.Result<List<Recipe>> cachedResult = recipeRepository.loadFromCache();
+            
+            if (cachedResult.isSuccess()) {
+                List<Recipe> cachedRecipes = ((RecipeRepository.Result.Success<List<Recipe>>) cachedResult).getData();
+                Recipe foundRecipe = null;
+                // Ищем нужный рецепт в списке
+                for (Recipe r : cachedRecipes) {
+                    if (r.getId() == recipeId) {
+                        foundRecipe = r;
+                        break;
+                    }
+                }
+                
+                if (foundRecipe != null) {
+                    recipe.postValue(foundRecipe);
+                    isLiked.postValue(foundRecipe.isLiked()); // Устанавливаем статус лайка
+                    checkEditPermission(foundRecipe.getUserId()); // Проверяем права
+                    Log.d(TAG, "Рецепт ID " + recipeId + " найден в кэше: " + foundRecipe.getTitle());
+                } else {
+                    errorMessage.postValue("Рецепт с ID " + recipeId + " не найден в кэше.");
+                    Log.e(TAG, "Рецепт с ID " + recipeId + " не найден в загруженном кэше.");
+                }
+            } else {
+                // Ошибка загрузки из кэша
+                String error = ((RecipeRepository.Result.Error<List<Recipe>>) cachedResult).getErrorMessage();
+                errorMessage.postValue("Ошибка загрузки из кэша: " + error);
+                Log.e(TAG, "Ошибка загрузки рецептов из кэша: " + error);
+            }
+        });
     }
-    
+
     /**
      * Проверяет, имеет ли пользователь права на редактирование рецепта
      */
@@ -92,48 +116,48 @@ public class RecipeDetailViewModel extends AndroidViewModel {
         
         // Пользователь может редактировать, если он автор или администратор
         boolean canEdit = (recipeUserId != null && recipeUserId.equals(currentUserId)) || permission == 2;
-        hasEditPermission.setValue(canEdit);
+        hasEditPermission.postValue(canEdit);
     }
-    
+
     /**
-     * @return LiveData с объектом рецепта
+     * Возвращает LiveData с информацией о рецепте
      */
     public LiveData<Recipe> getRecipe() {
         return recipe;
     }
-    
+
     /**
-     * @return LiveData с состоянием "лайкнутости" рецепта
+     * Возвращает LiveData с состоянием лайка
      */
-    public LiveData<Boolean> getIsLiked() {
+    public LiveData<Boolean> isLiked() {
         return isLiked;
     }
-    
+
     /**
-     * @return LiveData с состоянием процесса удаления
+     * Возвращает LiveData с состоянием процесса удаления
      */
-    public LiveData<Boolean> getIsDeleting() {
+    public LiveData<Boolean> isDeleting() {
         return isDeleting;
     }
-    
+
     /**
-     * @return LiveData с успешностью удаления
+     * Возвращает LiveData с результатом удаления
      */
-    public LiveData<Boolean> getDeleteSuccess() {
+    public LiveData<Boolean> isDeleteSuccess() {
         return deleteSuccess;
     }
-    
+
     /**
-     * @return LiveData с сообщением об ошибке
+     * Возвращает LiveData с текстом ошибки
      */
     public LiveData<String> getErrorMessage() {
         return errorMessage;
     }
-    
+
     /**
-     * @return LiveData с наличием прав на редактирование
+     * Возвращает LiveData с информацией о наличии прав на редактирование
      */
-    public LiveData<Boolean> getHasEditPermission() {
+    public LiveData<Boolean> hasEditPermission() {
         return hasEditPermission;
     }
     
@@ -141,30 +165,28 @@ public class RecipeDetailViewModel extends AndroidViewModel {
      * Изменяет состояние "лайка" для рецепта
      */
     public void toggleLike() {
-        if (recipe.getValue() == null) {
+        Recipe currentRecipe = recipe.getValue();
+        if (currentRecipe == null) {
+            errorMessage.postValue("Данные рецепта еще не загружены.");
             return;
         }
         
         String userId = preferences.getString("userId", "0");
         if (userId.equals("0")) {
-            errorMessage.setValue("Для добавления в избранное необходимо войти в аккаунт");
+            errorMessage.postValue("Для добавления в избранное необходимо войти в аккаунт");
             return;
         }
         
-        boolean newLikeState = !isLiked.getValue();
-        isLiked.setValue(newLikeState);
-        
-        // Обновляем рецепт
-        Recipe currentRecipe = recipe.getValue();
+        boolean currentLikeState = isLiked.getValue() != null ? isLiked.getValue() : false;
+        boolean newLikeState = !currentLikeState;
+        isLiked.postValue(newLikeState);
         currentRecipe.setLiked(newLikeState);
-        recipe.setValue(currentRecipe);
         
-        // Отправляем запрос на сервер
         sendLikeRequest(userId, currentRecipe.getId(), newLikeState);
         
-        // Обновляем локальную базу данных
         executeIfActive(() -> {
             localRepository.updateLikeStatus(currentRecipe.getId(), newLikeState);
+            Log.d(TAG, "Статус лайка для ID " + currentRecipe.getId() + " обновлен в локальной БД на " + newLikeState);
         });
     }
     
@@ -189,125 +211,87 @@ public class RecipeDetailViewModel extends AndroidViewModel {
             
             client.newCall(request).enqueue(new Callback() {
                 @Override
-                public void onFailure(Call call, IOException e) {
+                public void onFailure(@NonNull Call call, @NonNull IOException e) {
                     Log.e(TAG, "Ошибка сети при изменении лайка", e);
                     errorMessage.postValue("Ошибка сети: " + e.getMessage());
                 }
                 
                 @Override
-                public void onResponse(Call call, Response response) throws IOException {
+                public void onResponse(@NonNull Call call, @NonNull Response response) throws IOException {
                     if (response.isSuccessful()) {
                         Log.d(TAG, "Успешный ответ от сервера на изменение лайка");
                     } else {
-                        Log.e(TAG, "Ошибка сервера при изменении лайка: " + response.code());
+                        Log.e(TAG, "Ошибка сервера при изменении лайка: " + response.code() + " " + response.message());
+                        String responseBody = response.body() != null ? response.body().string() : "No body";
+                        Log.e(TAG, "Тело ответа: " + responseBody);
                         errorMessage.postValue("Ошибка сервера: " + response.code());
+                    }
+                    if (response.body() != null) {
+                        response.body().close();
                     }
                 }
             });
         } catch (Exception e) {
             Log.e(TAG, "Ошибка при создании запроса на изменение лайка", e);
-            errorMessage.setValue("Ошибка приложения: " + e.getMessage());
+            errorMessage.postValue("Ошибка приложения: " + e.getMessage());
         }
     }
     
     /**
      * Выполняет удаление рецепта
+     * @param recipeId ID удаляемого рецепта
      */
-    public void deleteRecipe() {
-        if (recipe.getValue() == null) {
+    public void deleteRecipe(int recipeId) {
+        Recipe currentRecipe = recipe.getValue();
+        if (currentRecipe == null || currentRecipe.getId() != recipeId) {
+            Log.e(TAG, "Невозможно удалить: текущий рецепт не совпадает с ID " + recipeId);
+            errorMessage.postValue("Ошибка удаления: Несоответствие данных.");
             return;
         }
         
-        Recipe currentRecipe = recipe.getValue();
-        String userId = preferences.getString("userId", "0");
+        String currentUserId = preferences.getString("userId", "0");
         int permission = preferences.getInt("permission", 1);
         
-        isDeleting.setValue(true);
+        boolean canDelete = (currentRecipe.getUserId() != null && currentRecipe.getUserId().equals(currentUserId)) || permission == 2;
+        if (!canDelete) {
+            errorMessage.postValue("У вас нет прав на удаление этого рецепта.");
+            return;
+        }
         
-        // Сначала уведомляем фрагменты об удалении
-        notifyRecipeDeleted(currentRecipe);
+        isDeleting.postValue(true);
         
-        recipeDeleter.deleteRecipe(currentRecipe.getId(), currentRecipe.getUserId(), permission, 
+        recipeDeleter.deleteRecipe(recipeId, currentUserId, permission,
                 new RecipeDeleter.DeleteRecipeCallback() {
             @Override
             public void onDeleteSuccess() {
-                isDeleting.setValue(false);
-                deleteSuccess.setValue(true);
+                Log.d(TAG, "Рецепт с ID " + recipeId + " успешно удален.");
+                recipe.postValue(null);
+                isDeleting.postValue(false);
+                deleteSuccess.postValue(true);
             }
 
             @Override
             public void onDeleteFailure(String error) {
-                isDeleting.setValue(false);
-                errorMessage.setValue(error);
+                Log.e(TAG, "Ошибка удаления рецепта ID " + recipeId + ": " + error);
+                errorMessage.postValue("Ошибка удаления: " + error);
+                isDeleting.postValue(false);
+                deleteSuccess.postValue(false);
             }
         });
     }
     
-    /**
-     * Уведомляет фрагменты об удалении рецепта
-     */
-    private void notifyRecipeDeleted(Recipe deletedRecipe) {
-        try {
-            Log.d(TAG, "Уведомление фрагментов об удалении рецепта: " + deletedRecipe.getId());
-            
-            // Обновляем локальную базу данных
-            executeIfActive(() -> {
-                try {
-                    // Удаляем рецепт из локальной базы данных
-                    localRepository.deleteRecipe(deletedRecipe.getId());
-                    Log.d(TAG, "Рецепт удален из локальной базы данных: " + deletedRecipe.getId());
-                } catch (Exception e) {
-                    Log.e(TAG, "Ошибка при удалении рецепта из локальной базы данных", e);
-                }
-            });
-            
-            // Если рецепт был в избранном, удаляем его и оттуда
-            if (deletedRecipe.isLiked()) {
-                FavoritesFragment.removeLikedRecipe(deletedRecipe.getId());
-                Log.d(TAG, "Рецепт удален из FavoritesFragment: " + deletedRecipe.getId());
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка при уведомлении фрагментов об удалении рецепта", e);
-        }
-    }
-    
-    /**
-     * Обновляет данные рецепта после редактирования
-     */
-    public void updateRecipeData(String newTitle, String newIngredients, String newInstructions, String photoUrl) {
-        if (recipe.getValue() == null) {
-            return;
-        }
-        
-        Recipe currentRecipe = recipe.getValue();
-        currentRecipe.setTitle(newTitle);
-        currentRecipe.setIngredients(newIngredients);
-        currentRecipe.setInstructions(newInstructions);
-        if (photoUrl != null && !photoUrl.isEmpty()) {
-            currentRecipe.setPhoto_url(photoUrl);
-        }
-        
-        recipe.setValue(currentRecipe);
-    }
-    
-    /**
-     * Очищает ресурсы при уничтожении ViewModel
-     */
     @Override
     protected void onCleared() {
-        executor.shutdown();
         super.onCleared();
+        executor.shutdown();
     }
 
     /**
-     * Метод, выполняющий операцию в executor с проверкой его состояния
-     * @param task задача для выполнения
+     * Выполняет задачу в фоновом потоке, если ViewModel активна.
      */
     private void executeIfActive(Runnable task) {
         if (!executor.isShutdown()) {
             executor.execute(task);
-        } else {
-            Log.w(TAG, "Executor уже завершен, пропускаем задачу");
         }
     }
-} 
+}

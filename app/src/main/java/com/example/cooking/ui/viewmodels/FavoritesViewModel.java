@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
+import com.example.cooking.Recipe.Ingredient;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.data.repositories.LikedRecipesRepository;
 import com.example.cooking.utils.MySharedPreferences;
@@ -34,6 +35,7 @@ public class FavoritesViewModel extends AndroidViewModel {
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isRefreshing = new MutableLiveData<>(false);
     private String userId;
+    private List<Recipe> originalLikedRecipes = new ArrayList<>();
     
     public FavoritesViewModel(@NonNull Application application) {
         super(application);
@@ -85,6 +87,8 @@ public class FavoritesViewModel extends AndroidViewModel {
     public void loadLikedRecipes() {
         if (!isUserLoggedIn()) {
             errorMessage.setValue("Для просмотра избранных рецептов необходимо войти в аккаунт");
+            likedRecipes.setValue(new ArrayList<>());
+            originalLikedRecipes = new ArrayList<>();
             return;
         }
         
@@ -93,7 +97,6 @@ public class FavoritesViewModel extends AndroidViewModel {
         likedRecipesRepository.getLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
             @Override
             public void onRecipesLoaded(List<Recipe> recipes) {
-                // Обрабатываем загруженные рецепты
                 processFetchedRecipes(recipes);
                 isLoading.setValue(false);
             }
@@ -101,6 +104,8 @@ public class FavoritesViewModel extends AndroidViewModel {
             @Override
             public void onDataNotAvailable(String error) {
                 errorMessage.setValue("Не удалось загрузить лайкнутые рецепты: " + error);
+                likedRecipes.setValue(new ArrayList<>());
+                originalLikedRecipes = new ArrayList<>();
                 isLoading.setValue(false);
                 Log.e(TAG, "Ошибка при загрузке лайкнутых рецептов: " + error);
             }
@@ -113,15 +118,16 @@ public class FavoritesViewModel extends AndroidViewModel {
     public void refreshLikedRecipes() {
         if (!isUserLoggedIn()) {
             errorMessage.setValue("Для просмотра избранных рецептов необходимо войти в аккаунт");
+            isRefreshing.setValue(false);
             return;
         }
         
         isRefreshing.setValue(true);
+        likedRecipesRepository.clearCache(userId);
         
         likedRecipesRepository.getLikedRecipes(userId, new LikedRecipesRepository.LikedRecipesCallback() {
             @Override
             public void onRecipesLoaded(List<Recipe> recipes) {
-                // Обрабатываем загруженные рецепты
                 processFetchedRecipes(recipes);
                 isRefreshing.setValue(false);
             }
@@ -139,33 +145,45 @@ public class FavoritesViewModel extends AndroidViewModel {
      * Выполняет поиск по локальному списку рецептов
      */
     public void performSearch(String query) {
-        if (likedRecipes.getValue() == null || likedRecipes.getValue().isEmpty()) {
-            errorMessage.setValue("Список лайкнутых рецептов пуст");
+        if (originalLikedRecipes == null || originalLikedRecipes.isEmpty()) {
             return;
         }
         
         Log.d(TAG, "Выполняется поиск в избранном: " + query);
         
-        if (query.isEmpty()) {
-            return; // Не делаем поиск для пустого запроса
+        if (query == null || query.trim().isEmpty()) {
+            likedRecipes.setValue(new ArrayList<>(originalLikedRecipes));
+            errorMessage.setValue(null);
+            return;
         }
         
         List<Recipe> filteredRecipes = new ArrayList<>();
-        String lowerCaseQuery = query.toLowerCase();
+        String lowerCaseQuery = query.toLowerCase().trim();
         
-        for (Recipe recipe : likedRecipes.getValue()) {
-            // Проверяем совпадение в названии или ингредиентах
-            if (recipe.getTitle().toLowerCase().contains(lowerCaseQuery) || 
-                recipe.getIngredients().toLowerCase().contains(lowerCaseQuery)) {
+        for (Recipe recipe : originalLikedRecipes) {
+            boolean titleMatch = recipe.getTitle() != null && recipe.getTitle().toLowerCase().contains(lowerCaseQuery);
+            boolean ingredientMatch = false;
+            
+            if (recipe.getIngredients() != null) {
+                for (Ingredient ingredient : recipe.getIngredients()) {
+                    if (ingredient.getName() != null && ingredient.getName().toLowerCase().contains(lowerCaseQuery)) {
+                        ingredientMatch = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (titleMatch || ingredientMatch) {
                 filteredRecipes.add(recipe);
             }
         }
         
-        // Обновляем LiveData с отфильтрованными рецептами
         likedRecipes.setValue(filteredRecipes);
         
         if (filteredRecipes.isEmpty()) {
             errorMessage.setValue("По запросу \"" + query + "\" ничего не найдено");
+        } else {
+            errorMessage.setValue(null);
         }
     }
     
@@ -178,29 +196,38 @@ public class FavoritesViewModel extends AndroidViewModel {
             return;
         }
         
-        // Создаем новый список на основе текущего
-        List<Recipe> currentList = likedRecipes.getValue();
+        List<Recipe> currentList = originalLikedRecipes;
         if (currentList == null) {
             currentList = new ArrayList<>();
         }
         
         List<Recipe> updatedList = new ArrayList<>(currentList);
         
-        // Если удаляем из избранного, удаляем рецепт из списка
         if (!isLiked) {
             updatedList.removeIf(r -> r.getId() == recipe.getId());
+            originalLikedRecipes = new ArrayList<>(updatedList);
+        } else {
+            recipe.setLiked(true);
+            boolean found = false;
+            for (Recipe r : updatedList) {
+                if (r.getId() == recipe.getId()) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                updatedList.add(recipe);
+                originalLikedRecipes = new ArrayList<>(updatedList);
+            }
         }
         
-        // Обновляем LiveData со списком избранных рецептов
         likedRecipes.setValue(updatedList);
         
-        // Отправляем запрос на сервер в фоновом потоке
         executeIfActive(() -> {
             try {
-                // Здесь логика отправки запроса на сервер через LikedRecipesRepository
                 likedRecipesRepository.updateLikeStatus(recipe.getId(), userId, isLiked);
             } catch (Exception e) {
-                Log.e(TAG, "Ошибка при обновлении статуса лайка", e);
+                Log.e(TAG, "Ошибка при обновлении статуса лайка на сервере", e);
             }
         });
     }
@@ -211,51 +238,35 @@ public class FavoritesViewModel extends AndroidViewModel {
      * @param isLiked новый статус лайка
      */
     public void updateLikeStatus(Recipe recipe, boolean isLiked) {
-        // Переиспользуем метод toggleLikeStatus для обновления лайка
         toggleLikeStatus(recipe, isLiked);
     }
     
     /**
-     * Обрабатывает загруженные с сервера рецепты (удаляет дубликаты, проставляет статусы)
+     * Обрабатывает загруженные с сервера рецепты
      */
     private void processFetchedRecipes(List<Recipe> recipes) {
-        List<Recipe> processedRecipes = new ArrayList<>();
+        if (recipes == null) {
+            recipes = new ArrayList<>();
+        }
         
         for (Recipe recipe : recipes) {
             recipe.setLiked(true);
-            
-            // Проверяем, есть ли уже этот рецепт в списке по ID
-            boolean isDuplicate = false;
-            for (Recipe existing : processedRecipes) {
-                if (existing.getId() == recipe.getId()) {
-                    isDuplicate = true;
-                    break;
-                }
-            }
-            
-            if (!isDuplicate) {
-                processedRecipes.add(recipe);
-            } else {
-                Log.w(TAG, "Найден дубликат рецепта с id: " + recipe.getId() + ", пропускаем");
-            }
         }
         
-        Log.d(TAG, "Обработано " + processedRecipes.size() + " избранных рецептов");
-        likedRecipes.setValue(processedRecipes);
+        originalLikedRecipes = new ArrayList<>(recipes);
+        likedRecipes.setValue(new ArrayList<>(recipes));
+        errorMessage.setValue(null);
+        Log.d(TAG, "Обработано и установлено " + recipes.size() + " избранных рецептов");
     }
     
     /**
-     * Обновляет список избранных рецептов
-     * @param recipes новый список рецептов
+     * Обновляет список избранных рецептов (например, после выхода из аккаунта)
      */
     public void updateLikedRecipes(List<Recipe> recipes) {
-        // Убеждаемся, что обновление происходит в UI потоке
-        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            likedRecipes.setValue(recipes);
-        } else {
-            likedRecipes.postValue(recipes);
+        if (recipes == null) {
+            recipes = new ArrayList<>();
         }
-        Log.d(TAG, "LiveData likedRecipes обновлен с " + (recipes != null ? recipes.size() : 0) + " рецептами");
+        processFetchedRecipes(recipes);
     }
     
     /**
@@ -263,8 +274,9 @@ public class FavoritesViewModel extends AndroidViewModel {
      */
     @Override
     protected void onCleared() {
-        executor.shutdown();
         super.onCleared();
+        executor.shutdownNow();
+        Log.d(TAG, "FavoritesViewModel cleared");
     }
     
     /**
@@ -272,10 +284,12 @@ public class FavoritesViewModel extends AndroidViewModel {
      * @param task задача для выполнения
      */
     private void executeIfActive(Runnable task) {
-        if (!executor.isShutdown()) {
-            executor.execute(task);
-        } else {
-            Log.w(TAG, "Executor уже завершен, пропускаем задачу");
+        if (!executor.isShutdown() && !executor.isTerminated()) {
+            try {
+                executor.execute(task);
+            } catch (Exception e) {
+                Log.e(TAG, "Ошибка при выполнении задачи в Executor", e);
+            }
         }
     }
     
@@ -284,6 +298,6 @@ public class FavoritesViewModel extends AndroidViewModel {
      * @return ID пользователя
      */
     public String getUserId() {
-        return preferences.getUser().getUserId();
+        return userId;
     }
 } 
