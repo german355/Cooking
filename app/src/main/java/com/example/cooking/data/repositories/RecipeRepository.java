@@ -40,96 +40,107 @@ import retrofit2.Callback;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
 
+import com.example.cooking.network.interceptors.AuthInterceptor;
+import com.example.cooking.utils.MySharedPreferences;
+import com.example.cooking.data.repositories.RecipeLocalRepository;
+
 /**
- * Репозиторий для управления данными рецептов с использованием всех преимуществ Retrofit.
+ * Репозиторий для управления данными рецептов с использованием всех преимуществ
+ * Retrofit.
  */
 public class RecipeRepository {
     private static final String TAG = "RecipeRepository";
     private static final String API_URL = ServerConfig.BASE_API_URL;
-    
+
     // Настройки кэша
     private static final long CACHE_SIZE = 10 * 1024 * 1024; // 10 МБ
     private static final String CACHE_CONTROL_HEADER = "Cache-Control";
     private static final int MAX_AGE = 60 * 4; // 4 минуты для онлайн кэша
     private static final int MAX_STALE = 60 * 60 * 24 * 7; // 7 дней для оффлайн кэша
-    
+
     // Настройки кэша в SharedPreferences
     private static final String RECIPES_CACHE_KEY = "cached_recipes";
     private static final String LAST_UPDATE_TIME_KEY = "recipes_last_update_time";
     private static final String PREF_NAME = "recipe_cache";
     private static final long CACHE_EXPIRATION_TIME = (60 * 60 * 1000) / 15; // 4 минуты
-    
+
     private final Context context;
     private final RecipeApi recipeApi;
-    
+    private final MySharedPreferences preferences;
+    private final RecipeLocalRepository localRepository;
+
     private static final Gson gson = new Gson(); // Экземпляр Gson
-    
+
     public interface RecipesCallback {
         void onRecipesLoaded(List<Recipe> recipes);
+
         void onDataNotAvailable(String error);
     }
-    
+
     public RecipeRepository(Context context) {
         this.context = context;
-        
+        this.preferences = new MySharedPreferences(context);
+        this.localRepository = new RecipeLocalRepository(context);
+
         // Создаем HTTP кэш
         File cacheDir = new File(context.getCacheDir(), "http-cache");
         Cache cache = new Cache(cacheDir, CACHE_SIZE);
-        
+
         // логирование для отладки
         HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor();
         loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
-        
-        //интерцептор для добавления заголовков кэширования
+
+        // интерцептор для добавления заголовков кэширования
         Interceptor cacheInterceptor = chain -> {
             Request request = chain.request();
-            
+
             // Всегда сначала пробуем загрузить свежие данные с сервера
             if (isNetworkAvailable()) {
                 // Запрос к серверу с указанием не использовать кэш
                 request = request.newBuilder()
                         .cacheControl(CacheControl.FORCE_NETWORK)
                         .build();
-                
+
                 Log.d(TAG, "Загрузка данных с сервера");
             } else {
                 // Если сети нет, пробуем использовать кэш
                 CacheControl cacheControl = new CacheControl.Builder()
                         .maxStale(MAX_STALE, TimeUnit.SECONDS)
                         .build();
-                
+
                 request = request.newBuilder()
                         .cacheControl(cacheControl)
                         .build();
-                
+
                 Log.d(TAG, "Нет сети, используем оффлайн кэш");
             }
-            
+
             Response response = chain.proceed(request);
-            
+
             // Кэшируем ответ для будущего использования в оффлайн режиме
             return response.newBuilder()
                     .removeHeader("Pragma")
                     .header(CACHE_CONTROL_HEADER, "public, max-age=" + MAX_AGE)
                     .build();
         };
-        
-        //  интерцептор для перехвата всех запросов
+
+        // интерцептор для перехвата всех запросов
         Interceptor requestInterceptor = chain -> {
             Request original = chain.request();
-            
+
             // Добавляем общие заголовки к запросу
             Request request = original.newBuilder()
                     .header("Accept", "application/json")
                     .method(original.method(), original.body())
                     .build();
-            
+
             return chain.proceed(request);
         };
-        
+
         // Настраиваем OkHttpClient с кэшем и интерцепторами
         OkHttpClient httpClient = new OkHttpClient.Builder()
                 .cache(cache)
+                .addInterceptor(new AuthInterceptor())
                 .addInterceptor(requestInterceptor)
                 .addNetworkInterceptor(cacheInterceptor)
                 .addInterceptor(loggingInterceptor)
@@ -137,23 +148,23 @@ public class RecipeRepository {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build();
-        
+
         // Настраиваем Gson для более безопасного парсинга JSON
         Gson gsonConverter = new GsonBuilder()
                 .setLenient()
                 .create();
-        
-        //  Retrofit с настроенным клиентом и конвертером
+
+        // Retrofit с настроенным клиентом и конвертером
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl(API_URL + "/")
                 .client(httpClient)
                 .addConverterFactory(GsonConverterFactory.create(gsonConverter))
                 .build();
-        
-        //  имплементацию API
+
+        // имплементацию API
         recipeApi = retrofit.create(RecipeApi.class);
     }
-    
+
     /**
      * Получает рецепты с сервера.
      */
@@ -174,21 +185,33 @@ public class RecipeRepository {
             }
         }
 
-        // Вызываем API асинхронно, используя enqueue
-        Call<RecipesResponse> call = recipeApi.getRecipes();
+        // Получаем наш внутренний userId из SharedPreferences
+        String userId = preferences.getString("userId", null);
+        if (userId == null || userId.isEmpty() || userId.equals("0")) { // Проверяем, что userId есть
+            Log.e(TAG, "Внутренний userId не найден в SharedPreferences. Пользователь не авторизован?");
+            // В случае ошибки ID, пробуем загрузить из кэша (для оффлайн режима)
+            tryLoadFromCache("Ошибка: Пользователь не авторизован (внутренний ID не найден).", callback);
+            return;
+        }
+        Log.d(TAG, "Отправляем запрос getRecipes с внутренним userId: " + userId);
+
+        // Вызываем API асинхронно, используя enqueue и передавая userId
+        Call<RecipesResponse> call = recipeApi.getRecipes(userId);
         call.enqueue(new Callback<RecipesResponse>() {
             @Override
             public void onResponse(Call<RecipesResponse> call, retrofit2.Response<RecipesResponse> response) {
                 if (response.isSuccessful()) {
                     RecipesResponse recipesResponse = response.body();
-                    if (recipesResponse != null && recipesResponse.isSuccess() && recipesResponse.getRecipes() != null) {
+                    if (recipesResponse != null && recipesResponse.isSuccess()
+                            && recipesResponse.getRecipes() != null) {
                         List<Recipe> recipes = recipesResponse.getRecipes();
                         Log.d(TAG, "Загружено с сервера рецептов: " + recipes.size());
                         // Сохраняем в кэш для RecipeSearchService и для оффлайн режима
                         saveToCache(recipes);
+                        saveToLocalDatabase(recipes);
                         callback.onRecipesLoaded(recipes);
                     } else {
-                        String errorMsg = response.body() != null 
+                        String errorMsg = response.body() != null
                                 ? "Ошибка в ответе сервера: " + recipesResponse.getMessage()
                                 : "Пустой ответ от сервера";
                         Log.e(TAG, errorMsg);
@@ -202,38 +225,39 @@ public class RecipeRepository {
                     } catch (IOException e) {
                         Log.e(TAG, "Ошибка при чтении errorBody", e);
                     }
-                    
+
                     String errorMsg = "Ошибка HTTP " + response.code();
                     if (errorBody != null && !errorBody.isEmpty()) {
                         errorMsg += ": " + errorBody;
                     }
-                    
+
                     Log.e(TAG, errorMsg);
                     // Пробуем загрузить из кэша при ошибке HTTP
                     tryLoadFromCache(errorMsg, callback);
                 }
             }
-            
+
             @Override
             public void onFailure(Call<RecipesResponse> call, Throwable t) {
                 Log.e(TAG, "Ошибка сети: " + t.getMessage(), t);
-                
+
                 String errorMsg;
                 if (!isNetworkAvailable()) {
                     errorMsg = "Нет подключения к интернету";
                 } else {
                     errorMsg = "Ошибка сети: " + t.getMessage();
                 }
-                
+
                 Log.e(TAG, errorMsg);
                 // Пробуем загрузить из кэша при ошибке сети
                 tryLoadFromCache(errorMsg, callback);
             }
         });
     }
-    
+
     /**
-     * Вспомогательный метод для загрузки данных из кэша при ошибках сети или сервера
+     * Вспомогательный метод для загрузки данных из кэша при ошибках сети или
+     * сервера
      */
     private void tryLoadFromCache(String errorMsg, RecipesCallback callback) {
         Result<List<Recipe>> cachedResult = loadFromCache();
@@ -246,7 +270,7 @@ public class RecipeRepository {
             callback.onDataNotAvailable(errorMsg + ". Кэш также недоступен.");
         }
     }
-    
+
     /**
      * Очищает кэш рецептов. Используется при добавлении/удалении/лайке рецептов.
      */
@@ -258,7 +282,7 @@ public class RecipeRepository {
             editor.remove(RECIPES_CACHE_KEY);
             editor.remove(LAST_UPDATE_TIME_KEY);
             editor.apply();
-            
+
             // Очищаем HTTP кэш
             try {
                 File cacheDir = new File(context.getCacheDir(), "http-cache");
@@ -267,13 +291,13 @@ public class RecipeRepository {
             } catch (Exception e) {
                 Log.e(TAG, "Ошибка при очистке HTTP кэша", e);
             }
-            
+
             Log.d(TAG, "Кэш успешно очищен");
         } catch (Exception e) {
             Log.e(TAG, "Ошибка при очистке кэша: " + e.getMessage(), e);
         }
     }
-    
+
     private boolean deleteDir(File dir) {
         if (dir != null && dir.isDirectory()) {
             String[] children = dir.list();
@@ -288,7 +312,7 @@ public class RecipeRepository {
         }
         return dir != null && dir.delete();
     }
-    
+
     /**
      * Сохраняет список рецептов в кэш SharedPreferences.
      * Используется для RecipeSearchService.
@@ -318,7 +342,7 @@ public class RecipeRepository {
             Log.e(TAG, "Ошибка при кэшировании рецептов в SharedPreferences", e);
         }
     }
-    
+
     /**
      * Загружает рецепты из кэша SharedPreferences.
      * Используется в RecipeSearchService для поиска.
@@ -331,8 +355,10 @@ public class RecipeRepository {
                 JSONArray recipesArray = new JSONArray(cachedRecipes);
                 List<Recipe> recipes = new ArrayList<>();
                 // Определяем типы для Gson
-                Type ingredientListType = new TypeToken<ArrayList<Ingredient>>() {}.getType();
-                Type stepListType = new TypeToken<ArrayList<Step>>() {}.getType();
+                Type ingredientListType = new TypeToken<ArrayList<Ingredient>>() {
+                }.getType();
+                Type stepListType = new TypeToken<ArrayList<Step>>() {
+                }.getType();
 
                 for (int i = 0; i < recipesArray.length(); i++) {
                     JSONObject recipeJson = recipesArray.getJSONObject(i);
@@ -347,7 +373,7 @@ public class RecipeRepository {
                     List<Ingredient> ingredients = gson.fromJson(ingredientsString, ingredientListType);
                     List<Step> steps = gson.fromJson(stepsString, stepListType);
 
-                     // Проверка на null после десериализации
+                    // Проверка на null после десериализации
                     recipe.setIngredients(ingredients == null ? new ArrayList<>() : new ArrayList<>(ingredients));
                     recipe.setSteps(steps == null ? new ArrayList<>() : new ArrayList<>(steps));
 
@@ -357,10 +383,10 @@ public class RecipeRepository {
                     recipe.setLiked(recipeJson.optBoolean("isLiked", false));
                     recipes.add(recipe);
                 }
-                 Log.d(TAG, "Загружено из SharedPreferences кэша рецептов: " + recipes.size());
+                Log.d(TAG, "Загружено из SharedPreferences кэша рецептов: " + recipes.size());
                 return new Result.Success<>(recipes);
             } else {
-                 Log.d(TAG, "SharedPreferences кэш рецептов пуст");
+                Log.d(TAG, "SharedPreferences кэш рецептов пуст");
                 return new Result.Error<>("Кэш пуст");
             }
         } catch (JSONException e) {
@@ -368,7 +394,7 @@ public class RecipeRepository {
             return new Result.Error<>("Ошибка при чтении кэша: " + e.getMessage());
         }
     }
-    
+
     /**
      * Проверяет, истек ли срок действия кэша.
      */
@@ -379,50 +405,68 @@ public class RecipeRepository {
         Log.d(TAG, "Проверка истечения SharedPreferences кэша: " + (expired ? "Истек" : "Актуален"));
         return expired;
     }
-    
+
     /**
      * Проверяет доступность сети.
      */
     private boolean isNetworkAvailable() {
-        ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        ConnectivityManager connectivityManager = (ConnectivityManager) context
+                .getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
         return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
-    
+
+    /**
+     * Сохраняет список рецептов в локальную базу данных Room.
+     * 
+     * @param recipes Список рецептов для сохранения.
+     */
+    private void saveToLocalDatabase(List<Recipe> recipes) {
+        if (recipes != null && !recipes.isEmpty()) {
+            // Можно добавить логику очистки старых данных перед вставкой новых,
+            // если это необходимо (например, localRepository.clearAllAsync();)
+            // но пока просто вставляем/заменяем
+            localRepository.insertAll(recipes);
+            Log.d(TAG, "Сохранено в локальную базу данных рецептов: " + recipes.size());
+        } else {
+            Log.w(TAG, "Попытка сохранить пустой или null список рецептов в локальную БД.");
+        }
+    }
+
     /**
      * Класс результата операции, используемый в RecipeSearchService.
      */
     public abstract static class Result<T> {
         public abstract boolean isSuccess();
-        
+
         public static class Success<T> extends Result<T> {
             private final T data;
-            
+
             public Success(T data) {
                 this.data = data;
             }
-            
+
             public T getData() {
                 return data;
             }
-            
+
             @Override
             public boolean isSuccess() {
                 return true;
             }
         }
-        
+
         public static class Error<T> extends Result<T> {
             private final String errorMessage;
-            
+
             public Error(String errorMessage) {
                 this.errorMessage = errorMessage;
             }
-            
+
             public String getErrorMessage() {
                 return errorMessage;
             }
-            
+
             @Override
             public boolean isSuccess() {
                 return false;

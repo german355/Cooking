@@ -22,37 +22,37 @@ import com.google.firebase.auth.FirebaseUser;
  */
 public class AuthViewModel extends AndroidViewModel {
     private static final String TAG = "AuthViewModel";
-    
+
     private final FirebaseAuthManager authManager;
     private final MySharedPreferences preferences;
     private final UserService userService;
-    
+
     // LiveData для состояний UI
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isAuthenticated = new MutableLiveData<>(false);
-    
+
     // LiveData для данных пользователя
     private final MutableLiveData<String> displayName = new MutableLiveData<>();
     private final MutableLiveData<String> email = new MutableLiveData<>();
     private final MutableLiveData<Integer> permission = new MutableLiveData<>(1);
-    
+
     // Валидация форм
     private boolean isEmailValid = false;
     private boolean isPasswordValid = false;
     private boolean isNameValid = false;
     private boolean isPasswordConfirmValid = false;
-    
+
     public AuthViewModel(@NonNull Application application) {
         super(application);
         authManager = new FirebaseAuthManager(application);
         preferences = new MySharedPreferences(application);
         userService = new UserService();
-        
+
         // Проверяем текущее состояние аутентификации
         checkAuthenticationState();
     }
-    
+
     /**
      * Проверяет текущее состояние аутентификации пользователя
      */
@@ -60,7 +60,7 @@ public class AuthViewModel extends AndroidViewModel {
         FirebaseUser currentUser = authManager.getCurrentUser();
         if (currentUser != null) {
             isAuthenticated.setValue(true);
-            
+
             // Загружаем данные пользователя из SharedPreferences
             displayName.setValue(preferences.getString("username", ""));
             email.setValue(preferences.getString("email", ""));
@@ -69,7 +69,7 @@ public class AuthViewModel extends AndroidViewModel {
             isAuthenticated.setValue(false);
         }
     }
-    
+
     /**
      * Выполняет вход с использованием email и пароля
      */
@@ -77,29 +77,69 @@ public class AuthViewModel extends AndroidViewModel {
         if (!validateEmail(email) || !validatePassword(password)) {
             return;
         }
-        
+
         isLoading.setValue(true);
-        
+
         authManager.signInWithEmailAndPassword(email, password, new FirebaseAuthManager.AuthCallback() {
             @Override
             public void onSuccess(FirebaseUser user) {
                 if (user != null) {
-                    saveUserData(user);
+                    // После успешного входа в Firebase, логинимся на нашем сервере
+                    Log.d(TAG, "Firebase login success, calling server login for user: " + user.getEmail());
+                    userService.loginFirebaseUser(user.getEmail(), user.getUid(), new UserService.UserCallback() {
+                        @Override
+                        public void onSuccess(ApiResponse response) {
+                            // Получаем внутренний ID и права из ответа сервера
+                            String internalUserId = response.getUserId();
+                            int permissionLevel = response.getPermission(); // Получаем permission
+                            if (internalUserId == null || internalUserId.isEmpty()) {
+                                Log.e(TAG,
+                                        "Внутренний userId не пришел от сервера при логине! Сохраняем Firebase UID.");
+                                internalUserId = user.getUid(); // Запасной вариант
+                            }
+                            if (permissionLevel == 0) { // Если сервер не вернул или вернул 0
+                                Log.w(TAG,
+                                        "Уровень прав не пришел от сервера при логине. Установлен 1 (обычный пользователь).");
+                                permissionLevel = 1; // Значение по умолчанию
+                            }
+                            // Сохраняем данные с внутренним ID и правами
+                            saveUserData(user, internalUserId, permissionLevel);
+                            isLoading.postValue(false);
+                            isAuthenticated.postValue(true);
+                            Log.d(TAG, "signInWithEmailPassword: Успешный вход, ID: " + internalUserId + ", Права: "
+                                    + permissionLevel);
+                        }
+
+                        @Override
+                        public void onFailure(String errorMessage) {
+                            // Ошибка при логине на НАШЕМ сервере
+                            Log.e(TAG, "Ошибка логина на сервере: " + errorMessage);
+                            // Сохраняем Firebase UID и права по умолчанию (1) при ошибке сервера
+                            saveUserData(user, user.getUid(), 1);
+                            isLoading.postValue(false);
+                            isAuthenticated.postValue(true); // Считаем аутентифицированным локально
+                            // Устанавливаем сообщение об ошибке, чтобы показать его пользователю
+                            AuthViewModel.this.errorMessage
+                                    .postValue("Ошибка синхронизации с сервером: " + errorMessage);
+                        }
+                    });
+                } else {
+                    // Сюда не должны попасть, если authManager.onSuccess сработал
                     isLoading.postValue(false);
-                    isAuthenticated.postValue(true);
-                    Log.d(TAG, "signInWithEmailPassword: Успешный вход пользователя: " + user.getEmail());
+                    errorMessage.postValue("Ошибка: Firebase User == null после успешного входа");
                 }
             }
-            
+
             @Override
             public void onError(String message) {
+                // Ошибка входа в Firebase
                 isLoading.postValue(false);
                 errorMessage.postValue(message);
-                Log.e(TAG, "signInWithEmailPassword: Ошибка входа: " + message);
+                Log.e(TAG, "signInWithEmailPassword: Ошибка входа в Firebase: " + message);
             }
         });
     }
-    
+
     /**
      * Регистрирует нового пользователя
      */
@@ -107,9 +147,9 @@ public class AuthViewModel extends AndroidViewModel {
         if (!validateEmail(email) || !validatePassword(password) || !validateName(username)) {
             return;
         }
-        
+
         isLoading.setValue(true);
-        
+
         authManager.registerWithEmailAndPassword(email, password, new FirebaseAuthManager.AuthCallback() {
             @Override
             public void onSuccess(FirebaseUser user) {
@@ -121,34 +161,48 @@ public class AuthViewModel extends AndroidViewModel {
                         userService.saveUser(user.getUid(), username, email, 1, new UserService.UserServiceCallback() {
                             @Override
                             public void onSuccess(ApiResponse response) {
-                                saveUserData(user);
+                                // Получаем внутренний ID и права из ответа сервера
+                                String internalUserId = response.getUserId();
+                                int permissionLevel = response.getPermission(); // Получаем permission
+                                if (internalUserId == null || internalUserId.isEmpty()) {
+                                    Log.e(TAG,
+                                            "Внутренний userId не пришел от сервера при регистрации! Сохраняем Firebase UID.");
+                                    internalUserId = user.getUid(); // Запасной вариант
+                                }
+                                if (permissionLevel == 0) { // Если сервер не вернул или вернул 0
+                                    Log.w(TAG, "Уровень прав не пришел от сервера при регистрации. Установлен 1.");
+                                    permissionLevel = 1; // Значение по умолчанию
+                                }
+                                // Вызываем saveUserData с внутренним ID и правами
+                                saveUserData(user, internalUserId, permissionLevel);
                                 isLoading.postValue(false);
                                 isAuthenticated.postValue(true);
-                                Log.d(TAG, "registerUser: Пользователь успешно зарегистрирован: " + user.getEmail());
+                                Log.d(TAG, "registerUser: Пользователь зарегистрирован, ID: " + internalUserId
+                                        + ", Права: " + permissionLevel);
                             }
-                            
+
                             @Override
                             public void onFailure(String error) {
-                                Log.e(TAG, "registerUser: Ошибка сохранения данных пользователя: " + error);
-                                // Даже если не удалось сохранить на сервере, считаем пользователя зарегистрированным
-                                saveUserData(user);
+                                Log.e(TAG, "registerUser: Ошибка сохранения данных пользователя на сервере: " + error);
+                                // Сохраняем Firebase UID и права по умолчанию (1) при ошибке сервера
+                                saveUserData(user, user.getUid(), 1);
                                 isLoading.postValue(false);
                                 isAuthenticated.postValue(true);
                             }
                         });
                     }
-                    
+
                     @Override
                     public void onError(String message) {
                         Log.e(TAG, "registerUser: Ошибка обновления имени пользователя: " + message);
-                        // Даже если не удалось обновить имя, считаем пользователя зарегистрированным
-                        saveUserData(user);
+                        // Сохраняем Firebase UID и права по умолчанию (1)
+                        saveUserData(user, user.getUid(), 1);
                         isLoading.postValue(false);
                         isAuthenticated.postValue(true);
                     }
                 });
             }
-            
+
             @Override
             public void onError(String message) {
                 isLoading.postValue(false);
@@ -157,44 +211,54 @@ public class AuthViewModel extends AndroidViewModel {
             }
         });
     }
-    
+
     /**
      * Выполняет выход пользователя
      */
     public void signOut() {
         authManager.signOut();
-        
+
         // Очищаем данные пользователя из SharedPreferences
         preferences.putString("userId", "0");
         preferences.putString("username", "");
         preferences.putString("email", "");
         preferences.putInt("permission", 1);
-        
+
         // Обновляем LiveData
         isAuthenticated.setValue(false);
         displayName.setValue("");
         email.setValue("");
         permission.setValue(1);
     }
-    
+
     /**
      * Сохраняет данные пользователя в SharedPreferences
+     * 
+     * @param user            Firebase пользователь
+     * @param internalUserId  Внутренний ID пользователя, полученный от нашего
+     *                        сервера
+     * @param permissionLevel Уровень прав пользователя, полученный от нашего
+     *                        сервера
      */
-    private void saveUserData(FirebaseUser user) {
-        String uid = user.getUid();
+    private void saveUserData(FirebaseUser user, String internalUserId, int permissionLevel) {
         String userName = user.getDisplayName() != null ? user.getDisplayName() : "";
         String userEmail = user.getEmail() != null ? user.getEmail() : "";
-        
-        // Сохраняем данные в SharedPreferences
-        preferences.putString("userId", uid);
+
+        // Сохраняем ВНУТРЕННИЙ ID в SharedPreferences
+        Log.d(TAG, "Сохранение userId в SharedPreferences: " + internalUserId);
+        preferences.putString("userId", internalUserId);
         preferences.putString("username", userName);
         preferences.putString("email", userEmail);
-        
+        // Сохраняем УРОВЕНЬ ПРАВ
+        Log.d(TAG, "Сохранение permission в SharedPreferences: " + permissionLevel);
+        preferences.putInt("permission", permissionLevel);
+
         // Обновляем LiveData
         displayName.postValue(userName);
         email.postValue(userEmail);
+        permission.postValue(permissionLevel);
     }
-    
+
     /**
      * Валидация email
      */
@@ -204,17 +268,17 @@ public class AuthViewModel extends AndroidViewModel {
             isEmailValid = false;
             return false;
         }
-        
+
         if (!Patterns.EMAIL_ADDRESS.matcher(emailValue).matches()) {
             errorMessage.setValue("Неверный формат email");
             isEmailValid = false;
             return false;
         }
-        
+
         isEmailValid = true;
         return true;
     }
-    
+
     /**
      * Валидация пароля
      */
@@ -224,17 +288,17 @@ public class AuthViewModel extends AndroidViewModel {
             isPasswordValid = false;
             return false;
         }
-        
+
         if (passwordValue.length() < 6) {
             errorMessage.setValue("Пароль должен содержать не менее 6 символов");
             isPasswordValid = false;
             return false;
         }
-        
+
         isPasswordValid = true;
         return true;
     }
-    
+
     /**
      * Валидация имени пользователя
      */
@@ -244,17 +308,17 @@ public class AuthViewModel extends AndroidViewModel {
             isNameValid = false;
             return false;
         }
-        
+
         if (nameValue.length() < 2) {
             errorMessage.setValue("Имя должно содержать не менее 2 символов");
             isNameValid = false;
             return false;
         }
-        
+
         isNameValid = true;
         return true;
     }
-    
+
     /**
      * Валидация подтверждения пароля
      */
@@ -264,17 +328,17 @@ public class AuthViewModel extends AndroidViewModel {
             isPasswordConfirmValid = false;
             return false;
         }
-        
+
         if (!password.equals(confirmPassword)) {
             errorMessage.setValue("Пароли не совпадают");
             isPasswordConfirmValid = false;
             return false;
         }
-        
+
         isPasswordConfirmValid = true;
         return true;
     }
-    
+
     /**
      * Проверяет все входные данные формы регистрации
      */
@@ -283,20 +347,21 @@ public class AuthViewModel extends AndroidViewModel {
         boolean emailValid = validateEmail(email);
         boolean passwordValid = validatePassword(password);
         boolean confirmValid = validatePasswordConfirmation(password, confirmPassword);
-        
+
         return nameValid && emailValid && passwordValid && confirmValid;
     }
-    
+
     /**
      * Проверяет все поля для входа на валидность
      */
     public boolean validateAllLoginInputs(String email, String password) {
         return validateEmail(email) && validatePassword(password);
     }
-    
+
     /**
      * Проверяет совпадение паролей
-     * @param password пароль
+     * 
+     * @param password        пароль
      * @param confirmPassword подтверждение пароля
      * @return true, если пароли совпадают
      */
@@ -306,70 +371,72 @@ public class AuthViewModel extends AndroidViewModel {
             isPasswordConfirmValid = false;
             return false;
         }
-        
+
         boolean match = password.equals(confirmPassword);
-        
+
         if (!match) {
             errorMessage.setValue("Пароли не совпадают");
             isPasswordConfirmValid = false;
         } else {
             isPasswordConfirmValid = true;
         }
-        
+
         return match;
     }
-    
+
     /**
      * Геттеры для LiveData
      */
     public LiveData<Boolean> getIsLoading() {
         return isLoading;
     }
-    
+
     public LiveData<String> getErrorMessage() {
         return errorMessage;
     }
-    
+
     public LiveData<Boolean> getIsAuthenticated() {
         return isAuthenticated;
     }
-    
+
     public LiveData<String> getDisplayName() {
         return displayName;
     }
-    
+
     public LiveData<String> getEmail() {
         return email;
     }
-    
+
     public LiveData<Integer> getPermission() {
         return permission;
     }
-    
+
     /**
      * Очищает сообщение об ошибке
      */
     public void clearErrorMessage() {
         errorMessage.setValue("");
     }
-    
+
     /**
      * Проверяет, авторизован ли пользователь
      */
     public boolean isUserLoggedIn() {
         return authManager.getCurrentUser() != null;
     }
-    
+
     /**
      * Инициализирует Google Sign-In
+     * 
      * @param webClientId идентификатор из google-services.json
      */
     public void initGoogleSignIn(String webClientId) {
         authManager.initGoogleSignIn(getApplication().getApplicationContext(), webClientId);
     }
-    
+
     /**
      * Запускает процесс входа через Google
+     * 
      * @param activity активность для запуска Intent
      */
     public void signInWithGoogle(android.app.Activity activity) {
@@ -381,12 +448,13 @@ public class AuthViewModel extends AndroidViewModel {
             isLoading.setValue(false);
         }
     }
-    
+
     /**
      * Обрабатывает результат входа через Google
+     * 
      * @param requestCode код запроса
-     * @param resultCode код результата
-     * @param data данные Intent
+     * @param resultCode  код результата
+     * @param data        данные Intent
      */
     public void handleGoogleSignInResult(int requestCode, int resultCode, Intent data) {
         // Проверяем, что это ответ на наш запрос
@@ -394,21 +462,56 @@ public class AuthViewModel extends AndroidViewModel {
             authManager.handleGoogleSignInResult(data, new FirebaseAuthManager.AuthCallback() {
                 @Override
                 public void onSuccess(FirebaseUser user) {
-                    saveUserData(user);
-                    isLoading.postValue(false);
-                    isAuthenticated.postValue(true);
-                    Log.d(TAG, "Google Sign-In: Успешный вход пользователя: " + user.getEmail());
+                    // После успешного Google Sign-In с Firebase, логинимся на нашем сервере
+                    Log.d(TAG,
+                            "Google Sign-In success with Firebase, calling server login for user: " + user.getEmail());
+                    userService.loginFirebaseUser(user.getEmail(), user.getUid(), new UserService.UserCallback() {
+                        @Override
+                        public void onSuccess(ApiResponse response) {
+                            // Получаем внутренний ID и права от сервера
+                            String internalUserId = response.getUserId();
+                            int permissionLevel = response.getPermission(); // Получаем permission
+                            if (internalUserId == null || internalUserId.isEmpty()) {
+                                Log.e(TAG,
+                                        "Внутренний userId не пришел от сервера при Google Sign-In! Сохраняем Firebase UID.");
+                                internalUserId = user.getUid(); // Запасной вариант
+                            }
+                            if (permissionLevel == 0) { // Если сервер не вернул или вернул 0
+                                Log.w(TAG, "Уровень прав не пришел от сервера при Google Sign-In. Установлен 1.");
+                                permissionLevel = 1; // Значение по умолчанию
+                            }
+                            // Сохраняем данные с внутренним ID и правами
+                            saveUserData(user, internalUserId, permissionLevel);
+                            isLoading.postValue(false);
+                            isAuthenticated.postValue(true);
+                            Log.d(TAG, "Google Sign-In: Успешный вход, ID: " + internalUserId + ", Права: "
+                                    + permissionLevel);
+                        }
+
+                        @Override
+                        public void onFailure(String errorMessage) {
+                            // Ошибка при логине на НАШЕМ сервере после Google Sign-In
+                            Log.e(TAG, "Ошибка логина на сервере после Google Sign-In: " + errorMessage);
+                            // Сохраняем Firebase UID и права по умолчанию (1) при ошибке сервера
+                            saveUserData(user, user.getUid(), 1);
+                            isLoading.postValue(false);
+                            isAuthenticated.postValue(true); // Считаем аутентифицированным локально
+                            AuthViewModel.this.errorMessage
+                                    .postValue("Ошибка синхронизации с сервером: " + errorMessage);
+                        }
+                    });
                 }
-                
+
                 @Override
                 public void onError(String message) {
+                    // Ошибка Google Sign-In с Firebase
                     isLoading.postValue(false);
                     errorMessage.postValue(message);
-                    Log.e(TAG, "Google Sign-In: Ошибка входа: " + message);
+                    Log.e(TAG, "Google Sign-In: Ошибка входа с Firebase: " + message);
                 }
             });
         } else {
             isLoading.setValue(false);
         }
     }
-} 
+}
