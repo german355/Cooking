@@ -19,31 +19,31 @@ import com.google.firebase.auth.FirebaseUser;
  */
 public class ProfileViewModel extends AndroidViewModel {
     private static final String TAG = "ProfileViewModel";
-    
+
     private final FirebaseAuthManager authManager;
     private final MySharedPreferences preferences;
     private final UserService userService;
-    
+
     // LiveData для состояний UI
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isAuthenticated = new MutableLiveData<>(false);
     private final MutableLiveData<Boolean> operationSuccess = new MutableLiveData<>();
-    
+
     // LiveData для данных пользователя
     private final MutableLiveData<String> displayName = new MutableLiveData<>();
     private final MutableLiveData<String> email = new MutableLiveData<>();
-    
+
     public ProfileViewModel(@NonNull Application application) {
         super(application);
         authManager = new FirebaseAuthManager(application);
         preferences = new MySharedPreferences(application);
         userService = new UserService();
-        
+
         // Проверяем текущее состояние аутентификации
         checkAuthenticationState();
     }
-    
+
     /**
      * Проверяет текущее состояние аутентификации пользователя
      */
@@ -51,29 +51,30 @@ public class ProfileViewModel extends AndroidViewModel {
         FirebaseUser currentUser = authManager.getCurrentUser();
         if (currentUser != null) {
             isAuthenticated.setValue(true);
-            
+
             // Загружаем данные пользователя из SharedPreferences
             String name = currentUser.getDisplayName();
             String userEmail = currentUser.getEmail();
-            
+
             // Если данные отсутствуют в Firebase, пробуем загрузить из SharedPreferences
             if (name == null || name.isEmpty()) {
                 name = preferences.getString("username", "");
             }
-            
+
             if (userEmail == null || userEmail.isEmpty()) {
                 userEmail = preferences.getString("email", "");
             }
-            
+
             displayName.setValue(name);
             email.setValue(userEmail);
         } else {
             isAuthenticated.setValue(false);
         }
     }
-    
+
     /**
      * Обновляет отображаемое имя пользователя
+     * 
      * @param newName новое имя пользователя
      */
     public void updateDisplayName(String newName) {
@@ -81,42 +82,42 @@ public class ProfileViewModel extends AndroidViewModel {
             errorMessage.setValue("Имя не может быть пустым");
             return;
         }
-        
+
         isLoading.setValue(true);
-        
+
         FirebaseUser user = authManager.getCurrentUser();
         if (user == null) {
             isLoading.setValue(false);
             errorMessage.setValue("Пользователь не авторизован");
             return;
         }
-        
+
         // Обновляем имя в профиле Firebase
         authManager.updateUserDisplayName(user, newName, new FirebaseAuthManager.UpdateProfileCallback() {
             @Override
             public void onSuccess() {
                 // Обновляем данные в SharedPreferences
                 preferences.putString("username", newName);
-                
+
                 // Обновляем LiveData
                 displayName.postValue(newName);
                 isLoading.postValue(false);
                 operationSuccess.postValue(true);
-                
+
                 // Обновляем имя пользователя на сервере
                 userService.updateUserName(user.getUid(), newName, new UserService.UserServiceCallback() {
                     @Override
                     public void onSuccess(ApiResponse response) {
                         Log.d(TAG, "Имя пользователя успешно обновлено на сервере");
                     }
-                    
+
                     @Override
                     public void onFailure(String errorMsg) {
                         Log.e(TAG, "Ошибка при обновлении имени пользователя на сервере: " + errorMsg);
                     }
                 });
             }
-            
+
             @Override
             public void onError(String message) {
                 isLoading.postValue(false);
@@ -124,37 +125,38 @@ public class ProfileViewModel extends AndroidViewModel {
             }
         });
     }
-    
+
     /**
      * Обновляет пароль пользователя
+     * 
      * @param currentPassword текущий пароль
-     * @param newPassword новый пароль
+     * @param newPassword     новый пароль
      */
     public void updatePassword(String currentPassword, String newPassword) {
         if (currentPassword == null || currentPassword.isEmpty()) {
             errorMessage.setValue("Текущий пароль не может быть пустым");
             return;
         }
-        
+
         if (newPassword == null || newPassword.isEmpty()) {
             errorMessage.setValue("Новый пароль не может быть пустым");
             return;
         }
-        
+
         if (newPassword.length() < 6) {
             errorMessage.setValue("Новый пароль должен содержать не менее 6 символов");
             return;
         }
-        
+
         isLoading.setValue(true);
-        
+
         FirebaseUser user = authManager.getCurrentUser();
         if (user == null || user.getEmail() == null) {
             isLoading.setValue(false);
             errorMessage.setValue("Пользователь не авторизован");
             return;
         }
-        
+
         // Сначала повторно аутентифицируем пользователя
         authManager.reauthenticate(user, user.getEmail(), currentPassword, new FirebaseAuthManager.AuthCallback() {
             @Override
@@ -166,7 +168,7 @@ public class ProfileViewModel extends AndroidViewModel {
                         isLoading.postValue(false);
                         operationSuccess.postValue(true);
                     }
-                    
+
                     @Override
                     public void onError(String message) {
                         isLoading.postValue(false);
@@ -174,7 +176,7 @@ public class ProfileViewModel extends AndroidViewModel {
                     }
                 });
             }
-            
+
             @Override
             public void onError(String message) {
                 isLoading.postValue(false);
@@ -182,9 +184,10 @@ public class ProfileViewModel extends AndroidViewModel {
             }
         });
     }
-    
+
     /**
      * Удаляет аккаунт пользователя
+     * 
      * @param password текущий пароль для подтверждения
      */
     public void deleteAccount(String password) {
@@ -192,16 +195,16 @@ public class ProfileViewModel extends AndroidViewModel {
             errorMessage.setValue("Пароль не может быть пустым");
             return;
         }
-        
+
         isLoading.setValue(true);
-        
+
         FirebaseUser user = authManager.getCurrentUser();
         if (user == null || user.getEmail() == null) {
             isLoading.setValue(false);
             errorMessage.setValue("Пользователь не авторизован");
             return;
         }
-        
+
         // Сначала повторно аутентифицируем пользователя
         authManager.reauthenticate(user, user.getEmail(), password, new FirebaseAuthManager.AuthCallback() {
             @Override
@@ -214,21 +217,21 @@ public class ProfileViewModel extends AndroidViewModel {
                                 preferences.putString("userId", "");
                                 preferences.putString("username", "");
                                 preferences.putString("email", "");
-                                
+
                                 // Обновляем LiveData
                                 isAuthenticated.postValue(false);
                                 displayName.postValue("");
                                 email.postValue("");
                                 isLoading.postValue(false);
                                 operationSuccess.postValue(true);
-                                
+
                                 // Удаляем данные пользователя с сервера
                                 userService.deleteUser(user.getUid(), new UserService.UserServiceCallback() {
                                     @Override
                                     public void onSuccess(ApiResponse response) {
                                         Log.d(TAG, "Данные пользователя успешно удалены с сервера");
                                     }
-                                    
+
                                     @Override
                                     public void onFailure(String errorMsg) {
                                         Log.e(TAG, "Ошибка при удалении данных пользователя с сервера: " + errorMsg);
@@ -236,12 +239,13 @@ public class ProfileViewModel extends AndroidViewModel {
                                 });
                             } else {
                                 isLoading.postValue(false);
-                                errorMessage.postValue("Ошибка при удалении аккаунта: " + 
-                                        (task.getException() != null ? task.getException().getMessage() : "Неизвестная ошибка"));
+                                errorMessage.postValue("Ошибка при удалении аккаунта: " +
+                                        (task.getException() != null ? task.getException().getMessage()
+                                                : "Неизвестная ошибка"));
                             }
                         });
             }
-            
+
             @Override
             public void onError(String message) {
                 isLoading.postValue(false);
@@ -249,7 +253,7 @@ public class ProfileViewModel extends AndroidViewModel {
             }
         });
     }
-    
+
     /**
      * Выход пользователя из системы
      */
@@ -257,86 +261,90 @@ public class ProfileViewModel extends AndroidViewModel {
         try {
             Log.d(TAG, "Выполнение выхода пользователя");
             authManager.signOut();
-            
-            // Очистка данных пользователя в SharedPreferences
-            preferences.clear();
-            Log.d(TAG, "SharedPreferences очищены после выхода");
-            
+
+            // Очистка данных пользователя в SharedPreferences (НЕ ИСПОЛЬЗУЕМ clear())
+            // preferences.clear(); // Закомментируем или удалим эту строку
+            preferences.putString("userId", "0"); // Устанавливаем userId в "0"
+            preferences.putString("username", ""); // Очищаем имя пользователя
+            preferences.putString("email", ""); // Очищаем email
+            preferences.putInt("permission", 1); // Сбрасываем права доступа
+            Log.d(TAG, "Данные пользователя в SharedPreferences сброшены после выхода");
+
             // Обновляем состояние аутентификации (важен порядок!)
             // Сначала устанавливаем isAuthenticated в false, чтобы операция выхода
             // правильно распознавалась наблюдателем operationSuccess
             isAuthenticated.postValue(false);
             Log.d(TAG, "Установлен статус isAuthenticated = false");
-            
+
             // Очищаем данные пользователя
             displayName.postValue("");
             email.postValue("");
-            
+
             // В самом конце устанавливаем operationSuccess в true,
             // чтобы запустить цепочку событий выхода
             Log.d(TAG, "Выставляем флаг успеха операции выхода");
             operationSuccess.postValue(true);
-            
+
         } catch (Exception e) {
             Log.e(TAG, "Ошибка при выходе из системы", e);
             errorMessage.postValue("Произошла ошибка при выходе");
             operationSuccess.postValue(false);
         }
     }
-    
+
     /**
      * Очищает сообщение об ошибке
      */
     public void clearErrorMessage() {
         errorMessage.setValue("");
     }
-    
+
     /**
      * Очищает статус успешной операции
      */
     public void clearOperationSuccess() {
         operationSuccess.setValue(false);
     }
-    
+
     /**
      * Геттер для LiveData состояния загрузки
      */
     public LiveData<Boolean> getIsLoading() {
         return isLoading;
     }
-    
+
     /**
      * Геттер для LiveData сообщения об ошибке
      */
     public LiveData<String> getErrorMessage() {
         return errorMessage;
     }
-    
+
     /**
      * Геттер для LiveData состояния аутентификации
      */
     public LiveData<Boolean> getIsAuthenticated() {
         return isAuthenticated;
     }
-    
+
     /**
      * Геттер для LiveData успешного выполнения операции
      */
     public LiveData<Boolean> getOperationSuccess() {
         return operationSuccess;
     }
-    
+
     /**
      * Геттер для LiveData отображаемого имени пользователя
      */
     public LiveData<String> getDisplayName() {
         return displayName;
     }
-    
+
     /**
      * Геттер для LiveData email пользователя
      */
     public LiveData<String> getEmail() {
         return email;
     }
-} 
+}
