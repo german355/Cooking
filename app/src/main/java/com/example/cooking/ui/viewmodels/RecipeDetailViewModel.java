@@ -268,8 +268,9 @@ public class RecipeDetailViewModel extends AndroidViewModel {
                 recipe.postValue(null);
                 isDeleting.postValue(false);
                 deleteSuccess.postValue(true);
+                // Удаляем рецепт из локальной базы данных
+                localRepository.deleteRecipe(recipeId);
             }
-
             @Override
             public void onDeleteFailure(String error) {
                 Log.e(TAG, "Ошибка удаления рецепта ID " + recipeId + ": " + error);
