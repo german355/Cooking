@@ -1,3 +1,18 @@
+# IDE specific files
+.idea/
+.vscode/
+.cursor/
+
+# API keys and secrets
+*.properties
+apikey.txt
+secrets.json
+.env
+
+# Log files
+*.log
+
+# Android specific
 *.iml
 .gradle
 /local.properties
@@ -7,9 +22,11 @@
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
 /build
 /captures
 .externalNativeBuild
 .cxx
-../../IdeaProjects/Cooking/local.properties
+local.properties
+
+# Mac OS
+.DS_Store
