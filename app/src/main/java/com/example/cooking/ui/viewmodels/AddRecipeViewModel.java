@@ -14,6 +14,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.example.cooking.Recipe.Ingredient;
+import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.Recipe.Step;
 import com.example.cooking.network.services.RecipeManager;
 import com.example.cooking.utils.MySharedPreferences;
@@ -51,11 +52,13 @@ public class AddRecipeViewModel extends AndroidViewModel {
     // Сервисы
     private final RecipeManager recipeManager;
     private final MySharedPreferences preferences;
+    private final com.example.cooking.data.repositories.RecipeLocalRepository localRepository;
     
     public AddRecipeViewModel(@NonNull Application application) {
         super(application);
         preferences = new MySharedPreferences(application);
         recipeManager = new RecipeManager(application);
+        localRepository = new com.example.cooking.data.repositories.RecipeLocalRepository(application);
         
         // Инициализируем списки с одним пустым элементом
         ArrayList<Ingredient> initialIngredients = new ArrayList<>();
@@ -101,7 +104,9 @@ public class AddRecipeViewModel extends AndroidViewModel {
 
         // Log.d(TAG, "Сохранение рецепта: title=" + currentTitle + ", userId=" + userId + ", ingredients=" + ingredientsString + ", steps=" + stepsString);
         Log.d(TAG, "Сохранение рецепта: title=" + currentTitle + ", userId=" + userId + ", ingredients count=" + currentIngredients.size() + ", steps count=" + currentSteps.size());
-        
+
+        List<Ingredient> CurrentIngredients = currentIngredients;
+        List<Step> finalCurrentSteps = currentSteps;
         recipeManager.saveRecipe(
             currentTitle,
             currentIngredients, // Передаем список напрямую
@@ -115,13 +120,40 @@ public class AddRecipeViewModel extends AndroidViewModel {
                     isLoading.postValue(false);
                     saveSuccess.postValue(true);
                     Log.d(TAG, "Рецепт успешно сохранен: " + message);
+                    // --- Новый код: парсим ответ сервера и сохраняем рецепт в локальную БД ---
+                    try {
+                        org.json.JSONObject json = new org.json.JSONObject(message);
+                        if (json.optBoolean("success", false)) {
+                            int recipeId = json.optInt("recipeId", -1);
+                            String photoUrl = json.optString("photo_url", null);
+                            // Собираем объект Recipe для локальной базы
+                            Recipe recipe = new Recipe();
+                            recipe.setId(recipeId);
+                            recipe.setTitle(currentTitle);
+                            recipe.setIngredients(new ArrayList<>(CurrentIngredients));
+                            recipe.setSteps(new ArrayList<>(finalCurrentSteps));
+                            recipe.setPhoto_url(photoUrl);
+                            recipe.setUserId(userId);
+                            // created_at и другие поля можно заполнить при необходимости
+                            localRepository.insertAll(java.util.Collections.singletonList(recipe));
+                            Log.d(TAG, "Рецепт сохранён в локальную БД с id=" + recipeId + ", photo_url=" + photoUrl);
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Ошибка парсинга ответа сервера или сохранения в БД", e);
+                    }
                 }
 
                 @Override
                 public void onFailure(String error) {
                     isLoading.postValue(false);
-                    errorMessage.postValue(error);
-                    Log.e(TAG, "Ошибка при сохранении рецепта: " + error);
+                    // Если ошибка связана с дублированием рецепта, считаем это успешным сохранением
+                    if (error != null && (error.toLowerCase().contains("дубли") || error.toLowerCase().contains("уже существует") || error.toLowerCase().contains("повторно") || error.toLowerCase().contains("duplicate") || error.toLowerCase().contains("already exists") || error.toLowerCase().contains("already added"))) {
+                        saveSuccess.postValue(true);
+                        Log.d(TAG, "Рецепт уже существует или был отправлен повторно, считаем как успешное сохранение: " + error);
+                    } else {
+                        errorMessage.postValue(error);
+                        Log.e(TAG, "Ошибка при сохранении рецепта: " + error);
+                    }
                 }
             }
         );
@@ -460,4 +492,4 @@ public class AddRecipeViewModel extends AndroidViewModel {
     public boolean hasImage() {
         return imageBytes != null && imageBytes.length > 0;
     }
-} 
+}

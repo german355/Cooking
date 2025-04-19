@@ -75,34 +75,50 @@ public class RecipeDetailViewModel extends AndroidViewModel {
         }
         Log.d(TAG, "Загрузка рецепта с ID: " + recipeId + " из кэша репозитория");
         executeIfActive(() -> {
-            // Загружаем весь список из кэша
             RecipeRepository.Result<List<Recipe>> cachedResult = recipeRepository.loadFromCache();
-            
+            boolean needServer = false;
+            List<Recipe> cachedRecipes = null;
             if (cachedResult.isSuccess()) {
-                List<Recipe> cachedRecipes = ((RecipeRepository.Result.Success<List<Recipe>>) cachedResult).getData();
+                cachedRecipes = ((RecipeRepository.Result.Success<List<Recipe>>) cachedResult).getData();
                 Recipe foundRecipe = null;
-                // Ищем нужный рецепт в списке
                 for (Recipe r : cachedRecipes) {
                     if (r.getId() == recipeId) {
                         foundRecipe = r;
                         break;
                     }
                 }
-                
                 if (foundRecipe != null) {
                     recipe.postValue(foundRecipe);
-                    isLiked.postValue(foundRecipe.isLiked()); // Устанавливаем статус лайка
-                    checkEditPermission(foundRecipe.getUserId()); // Проверяем права
+                    isLiked.postValue(foundRecipe.isLiked());
+                    checkEditPermission(foundRecipe.getUserId());
                     Log.d(TAG, "Рецепт ID " + recipeId + " найден в кэше: " + foundRecipe.getTitle());
+                    return;
                 } else {
-                    errorMessage.postValue("Рецепт с ID " + recipeId + " не найден в кэше.");
-                    Log.e(TAG, "Рецепт с ID " + recipeId + " не найден в загруженном кэше.");
+                    Log.e(TAG, "Рецепт с ID " + recipeId + " не найден в загруженном кэше. Пробуем загрузить с сервера.");
+                    needServer = true;
                 }
             } else {
-                // Ошибка загрузки из кэша
                 String error = ((RecipeRepository.Result.Error<List<Recipe>>) cachedResult).getErrorMessage();
-                errorMessage.postValue("Ошибка загрузки из кэша: " + error);
-                Log.e(TAG, "Ошибка загрузки рецептов из кэша: " + error);
+                Log.e(TAG, "Ошибка загрузки рецептов из кэша: " + error + ". Пробуем загрузить с сервера.");
+                needServer = true;
+            }
+            if (needServer) {
+                recipeRepository.loadRecipeFromServer(recipeId, new RecipeRepository.RecipeCallback() {
+                    @Override
+                    public void onRecipeLoaded(Recipe loadedRecipe) {
+                        recipe.postValue(loadedRecipe);
+                        isLiked.postValue(loadedRecipe.isLiked());
+                        checkEditPermission(loadedRecipe.getUserId());
+                        // Сохраняем в локальное хранилище для будущего использования
+                        localRepository.insertAll(java.util.Collections.singletonList(loadedRecipe));
+                        Log.d(TAG, "Рецепт ID " + recipeId + " успешно загружен с сервера и сохранён локально.");
+                    }
+                    @Override
+                    public void onDataNotAvailable(String error) {
+                        errorMessage.postValue("Не удалось загрузить рецепт с сервера: " + error);
+                        Log.e(TAG, "Не удалось загрузить рецепт с сервера: " + error);
+                    }
+                });
             }
         });
     }

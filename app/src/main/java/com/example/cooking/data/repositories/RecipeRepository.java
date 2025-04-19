@@ -77,6 +77,11 @@ public class RecipeRepository {
         void onDataNotAvailable(String error);
     }
 
+    public interface RecipeCallback {
+        void onRecipeLoaded(com.example.cooking.Recipe.Recipe loadedRecipe);
+        void onDataNotAvailable(String error);
+    }
+
     public RecipeRepository(Context context) {
         this.context = context;
         this.preferences = new MySharedPreferences(context);
@@ -472,5 +477,34 @@ public class RecipeRepository {
                 return false;
             }
         }
+    }
+
+    /**
+     * Загружает один рецепт с сервера по id (обходит отсутствие отдельного эндпоинта)
+     */
+    public void loadRecipeFromServer(int recipeId, final RecipeCallback callback) {
+        getRecipes(new RecipesCallback() {
+            @Override
+            public void onRecipesLoaded(List<Recipe> recipes) {
+                Recipe found = null;
+                if (recipes != null) {
+                    for (Recipe r : recipes) {
+                        if (r.getId() == recipeId) {
+                            found = r;
+                            break;
+                        }
+                    }
+                }
+                if (found != null) {
+                    callback.onRecipeLoaded(found);
+                } else {
+                    callback.onDataNotAvailable("Рецепт с id " + recipeId + " не найден на сервере");
+                }
+            }
+            @Override
+            public void onDataNotAvailable(String error) {
+                callback.onDataNotAvailable(error);
+            }
+        });
     }
 }

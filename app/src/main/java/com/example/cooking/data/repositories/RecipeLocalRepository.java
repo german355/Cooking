@@ -58,7 +58,7 @@ public class RecipeLocalRepository {
         for (Recipe recipe : recipes) {
             entities.add(new RecipeEntity(recipe));
         }
-        recipeDao.insertAll(entities);
+        executor.execute(() -> recipeDao.insertAll(entities));
     }
     
     /**
@@ -152,4 +152,4 @@ public class RecipeLocalRepository {
             Log.e(TAG, "Ошибка при запуске задачи удаления рецепта: " + recipeId, e);
         }
     }
-} 
+}
