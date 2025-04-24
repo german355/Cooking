@@ -29,6 +29,9 @@ public interface LikedRecipeDao {
     @Query("SELECT EXISTS(SELECT 1 FROM liked_recipes WHERE recipeId = :recipeId AND userId = :userId)")
     boolean isRecipeLiked(int recipeId, String userId);
 
+    @Query("SELECT recipeId FROM liked_recipes WHERE userId = :userId")
+    List<Integer> getLikedRecipeIdsSync(String userId);
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     void insertAll(List<LikedRecipeEntity> likedRecipes);
 }

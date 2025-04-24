@@ -17,6 +17,7 @@ import com.example.cooking.Recipe.Ingredient;
 import com.example.cooking.Recipe.Recipe;
 import com.example.cooking.data.repositories.LikedRecipesRepository;
 import com.example.cooking.data.repositories.RecipeLocalRepository;
+import com.example.cooking.data.repositories.RecipeRemoteRepository;
 import com.example.cooking.utils.MySharedPreferences;
 
 import java.util.ArrayList;
@@ -37,7 +38,9 @@ public class FavoritesViewModel extends AndroidViewModel {
     private LikeSyncViewModel likeSyncViewModel;
     private final ExecutorService executor;
     private final MySharedPreferences preferences;
-    
+    private final RecipeRemoteRepository remoteRepository;
+
+
     // LiveData для состояния UI (загрузка, ошибки, поиск)
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
@@ -58,6 +61,7 @@ public class FavoritesViewModel extends AndroidViewModel {
         super(application);
         likedRecipesRepository = new LikedRecipesRepository(application);
         recipeLocalRepository = new RecipeLocalRepository(application);
+        remoteRepository = new RecipeRemoteRepository(application);
         preferences = new MySharedPreferences(application);
         executor = Executors.newSingleThreadExecutor();
         userId = preferences.getString("userId", "0");
@@ -242,6 +246,8 @@ public class FavoritesViewModel extends AndroidViewModel {
         // 2. Обновляем статус в ЛОКАЛЬНОЙ БД ОСНОВНЫХ рецептов
         updateLocalRecipeLikeStatus(recipe.getId(), isLiked);
 
+        updateLikedRepositoryStatus(recipe.getId(), isLiked);
+
         // 3. Оповещаем Shared ViewModel об изменении
         // Используем сохраненную переменную likeSyncViewModel
         if (likeSyncViewModel != null) {
@@ -253,8 +259,8 @@ public class FavoritesViewModel extends AndroidViewModel {
             Log.e(TAG, "LikeSyncViewModel is null! Cannot notify.");
         }
 
-        // TODO: 4. Инициировать отдельный вызов для синхронизации статуса лайка с сервером
-        // syncLikeStatusWithServer(recipe.getId(), userId, isLiked);
+        remoteRepository.updateLikeStatus(recipe, isLiked);
+
     }
 
     /**
@@ -268,6 +274,26 @@ public class FavoritesViewModel extends AndroidViewModel {
              } catch (Exception e) {
                  Log.e(TAG, "Error updating like status in local main repository: " + e.getMessage(), e);
              }
+        });
+    }
+
+    private void updateLikedRepositoryStatus(int recipeId, boolean isLiked) {
+        String currentUserId = new MySharedPreferences(getApplication()).getString("userId", "0");
+        if (currentUserId.equals("0")) {
+            Log.w(TAG, "Cannot update liked repository status: User ID is 0.");
+            return;
+        }
+        executeIfActive(() -> {
+            try {
+                Log.d(TAG, "Updating like status in LIKED REPOSITORY for recipe " + recipeId + " to " + isLiked);
+                if (isLiked) {
+                    likedRecipesRepository.insertLikedRecipeLocal(recipeId, currentUserId);
+                } else {
+                    likedRecipesRepository.deleteLikedRecipeLocal(recipeId, currentUserId);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating status in liked repository: " + e.getMessage(), e);
+            }
         });
     }
     

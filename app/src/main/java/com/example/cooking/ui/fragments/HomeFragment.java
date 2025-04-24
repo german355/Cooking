@@ -137,10 +137,8 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
             viewModel.observeLikeChanges(getViewLifecycleOwner(), getActivity());
         }
         
-        // Загружаем данные при первом запуске
-        if (savedInstanceState == null) {
-            viewModel.refreshRecipes();
-        }
+        // Загружаем данные при первом запуске, если это необходимо
+        viewModel.loadInitialRecipesIfNeeded();
         
         // Инициализируем обработчик для автоматического обновления
         autoRefreshHandler = new Handler(Looper.getMainLooper());
@@ -291,10 +289,13 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
         // При возвращении к фрагменту запускаем автоматическое обновление
         startAutoRefresh();
         
+        // НЕ ЗАГРУЖАЕМ заново при возвращении
+        /* Убираем этот блок
         // При возвращении проверяем актуальность данных
         if (adapter.getItemCount() == 0) {
             viewModel.refreshRecipes();
         }
+        */
     }
     
     /**

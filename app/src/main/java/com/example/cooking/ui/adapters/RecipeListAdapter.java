@@ -117,8 +117,8 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
         
         // Слушатель нажатий на кнопку избранного
         holder.favoriteButton.setOnClickListener(v -> {
-            boolean isChecked = holder.favoriteButton.isChecked(); // Состояние ПОСЛЕ клика
-            
+            boolean isChecked = holder.favoriteButton.isChecked();
+
             // Вызываем метод обработки лайка, который проверит авторизацию
             if (likeListener != null) {
                 // Временно отключаем кнопку для предотвращения повторных нажатий
@@ -126,6 +126,7 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
                 
                 // Вызываем обратный вызов, где будет проверка авторизации
                 // Визуальное состояние обновится, когда ListAdapter получит новые данные
+                // Передаем состояние isChecked после клика
                 likeListener.onRecipeLike(recipe, isChecked);
                 
                 // Возвращаем активное состояние кнопке с задержкой

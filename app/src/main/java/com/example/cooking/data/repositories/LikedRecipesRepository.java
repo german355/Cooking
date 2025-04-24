@@ -289,4 +289,22 @@ public class LikedRecipesRepository {
         NetworkInfo activeNetworkInfo = cm.getActiveNetworkInfo();
         return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
+
+    /**
+     * Получить список ID лайкнутых рецептов синхронно.
+     * ВНИМАНИЕ: Выполняет запрос к БД в вызывающем потоке. Не использовать в UI потоке!
+     */
+    public List<Integer> getLikedRecipeIdsSync(String userId) {
+        try {
+            // Проверка на UI поток не нужна, т.к. ViewModel вызывает это из фонового потока
+            if (userId == null || userId.equals("0") || userId.isEmpty()) {
+                Log.w(TAG, "getLikedRecipeIdsSync: Invalid userId=" + userId + ", returning empty list.");
+                return new ArrayList<>();
+            }
+            return likedRecipeDao.getLikedRecipeIdsSync(userId);
+        } catch (Exception e) {
+            Log.e(TAG, "Error getting liked recipe IDs sync for userId=" + userId, e);
+            return new ArrayList<>(); // Возвращаем пустой список в случае ошибки
+        }
+    }
 }

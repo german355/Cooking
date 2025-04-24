@@ -302,8 +302,26 @@ public class FavoritesFragment extends Fragment implements RecipeAdapter.OnRecip
      */
     @Override
     public void onRecipeLike(Recipe recipe, boolean isLiked) {
-        Log.d(TAG, "onRecipeLike called: recipeId=" + recipe.getId() + ", isLiked=" + isLiked);
-        viewModel.toggleLikeStatus(recipe, isLiked);
+        // Проверяем, авторизован ли пользователь
+        if (userId.equals("0")) {
+            // Показываем Toast-сообщение
+            Toast.makeText(requireContext(), 
+                "Войдите в систему, чтобы добавлять рецепты в избранное", 
+                Toast.LENGTH_SHORT).show();
+            
+            // Для неавторизованного пользователя восстанавливаем исходное состояние чекбокса
+            // Эта часть не нужна, так как мы изменили логику в адаптере
+            return;
+        }
+        
+        // Только для авторизованных пользователей показываем сообщение об успехе
+        String message = isLiked ? 
+            "Рецепт добавлен в избранное" : 
+            "Рецепт удален из избранного";
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show();
+        
+        // Обновляем состояние в ViewModel (это обновит и локальную базу, и сервер)
+        viewModel.updateLikeStatus(recipe, isLiked);
     }
     
     /**
