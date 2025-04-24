@@ -9,6 +9,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 
+import com.example.cooking.data.database.LikedRecipeDao;
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
@@ -333,6 +334,7 @@ public class FirebaseAuthManager {
         if (googleSignInClient != null) {
             googleSignInClient.signOut();
         }
+
         firebaseAuth.signOut();
     }
 } 

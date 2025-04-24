@@ -2,6 +2,7 @@ package com.example.cooking.Recipe;
 
 import android.os.Parcel;
 import android.os.Parcelable;
+import java.util.Objects;
 
 public class Step implements Parcelable {
     private int number;
@@ -62,6 +63,21 @@ public class Step implements Parcelable {
         dest.writeInt(number);
         dest.writeString(instruction);
         dest.writeString(url);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Step step = (Step) o;
+        return number == step.number &&
+               Objects.equals(instruction, step.instruction) &&
+               Objects.equals(url, step.url);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(number, instruction, url);
     }
 
     @Override

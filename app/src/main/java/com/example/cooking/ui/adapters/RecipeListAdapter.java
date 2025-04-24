@@ -95,6 +95,9 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
             holder.imageView.setImageResource(R.drawable.white_card_background);
         }
         
+        // Логируем состояние isLiked ПЕРЕД установкой чекбокса
+        Log.d(TAG, "Binding ViewHolder for Recipe ID: " + recipe.getId() + ", Title: " + recipe.getTitle() + ", isLiked from Recipe object: " + recipe.isLiked());
+        
         // Устанавливаем состояние избранного
         holder.favoriteButton.setChecked(recipe.isLiked());
         

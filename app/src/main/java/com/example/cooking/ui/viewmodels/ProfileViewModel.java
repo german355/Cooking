@@ -9,20 +9,26 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.example.cooking.auth.FirebaseAuthManager;
+import com.example.cooking.data.database.AppDatabase;
+import com.example.cooking.data.database.LikedRecipeDao;
 import com.example.cooking.data.models.ApiResponse;
 import com.example.cooking.network.services.UserService;
 import com.example.cooking.utils.MySharedPreferences;
 import com.google.firebase.auth.FirebaseUser;
+
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * ViewModel для экрана профиля пользователя
  */
 public class ProfileViewModel extends AndroidViewModel {
     private static final String TAG = "ProfileViewModel";
-
+    private final LikedRecipeDao likedRecipeDao;
     private final FirebaseAuthManager authManager;
     private final MySharedPreferences preferences;
     private final UserService userService;
+    private final ExecutorService databaseExecutor;
 
     // LiveData для состояний UI
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
@@ -39,6 +45,8 @@ public class ProfileViewModel extends AndroidViewModel {
         authManager = new FirebaseAuthManager(application);
         preferences = new MySharedPreferences(application);
         userService = new UserService();
+        likedRecipeDao = AppDatabase.getInstance(application).likedRecipeDao();
+        databaseExecutor = Executors.newSingleThreadExecutor();
 
         // Проверяем текущее состояние аутентификации
         checkAuthenticationState();
@@ -261,32 +269,41 @@ public class ProfileViewModel extends AndroidViewModel {
         try {
             Log.d(TAG, "Выполнение выхода пользователя");
             authManager.signOut();
+            final String userId = preferences.getString("userId", "0");
 
-            // Очистка данных пользователя в SharedPreferences (НЕ ИСПОЛЬЗУЕМ clear())
-            // preferences.clear(); // Закомментируем или удалим эту строку
-            preferences.putString("userId", "0"); // Устанавливаем userId в "0"
-            preferences.putString("username", ""); // Очищаем имя пользователя
-            preferences.putString("email", ""); // Очищаем email
-            preferences.putInt("permission", 1); // Сбрасываем права доступа
+            // Выполняем удаление в фоновом потоке
+            databaseExecutor.execute(() -> {
+                try {
+                    Log.d(TAG, "Удаление лайков пользователя из БД в фоновом потоке userId: " + userId);
+                    if (userId != null && !userId.equals("0")) {
+                         likedRecipeDao.deleteAllForUser(userId);
+                         Log.d(TAG, "Лайки пользователя успешно удалены из БД");
+                    } else {
+                         Log.w(TAG, "userId недействителен (" + userId + "), удаление лайков пропущено");
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Ошибка при удалении лайков пользователя из БД", e);
+                }
+            });
+
+            // Остальные операции выполняются в основном потоке сразу
+            preferences.putString("userId", "0");
+            preferences.putString("username", "");
+            preferences.putString("email", "");
+            preferences.putInt("permission", 1);
             Log.d(TAG, "Данные пользователя в SharedPreferences сброшены после выхода");
 
-            // Обновляем состояние аутентификации (важен порядок!)
-            // Сначала устанавливаем isAuthenticated в false, чтобы операция выхода
-            // правильно распознавалась наблюдателем operationSuccess
             isAuthenticated.postValue(false);
             Log.d(TAG, "Установлен статус isAuthenticated = false");
 
-            // Очищаем данные пользователя
             displayName.postValue("");
             email.postValue("");
 
-            // В самом конце устанавливаем operationSuccess в true,
-            // чтобы запустить цепочку событий выхода
             Log.d(TAG, "Выставляем флаг успеха операции выхода");
             operationSuccess.postValue(true);
 
         } catch (Exception e) {
-            Log.e(TAG, "Ошибка при выходе из системы", e);
+            Log.e(TAG, "Ошибка при выходе из системы (основной поток)", e);
             errorMessage.postValue("Произошла ошибка при выходе");
             operationSuccess.postValue(false);
         }
@@ -346,5 +363,12 @@ public class ProfileViewModel extends AndroidViewModel {
      */
     public LiveData<String> getEmail() {
         return email;
+    }
+
+    @Override
+    protected void onCleared() {
+        super.onCleared();
+        databaseExecutor.shutdown();
+        Log.d(TAG, "ExecutorService остановлен в onCleared");
     }
 }

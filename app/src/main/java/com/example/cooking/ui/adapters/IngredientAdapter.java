@@ -7,6 +7,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.AutoCompleteTextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.ListAdapter;
@@ -15,6 +16,7 @@ import com.example.cooking.R;
 import com.example.cooking.Recipe.Ingredient;
 import com.google.android.material.textfield.TextInputEditText;
 import java.util.Objects;
+import android.widget.ArrayAdapter;
 
 public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter.ViewHolder> {
 
@@ -45,9 +47,9 @@ public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter
 
     // ViewHolder с обработчиками изменений
     class ViewHolder extends RecyclerView.ViewHolder {
-        private final TextInputEditText nameEditText;
+        private final AutoCompleteTextView nameEditText;
         private final TextInputEditText countEditText;
-        private final TextInputEditText typeEditText;
+        private final AutoCompleteTextView typeEditText;
         private final ImageButton removeButton;
         private final IngredientUpdateListener listener;
         private Ingredient currentIngredient;
@@ -56,7 +58,6 @@ public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter
         // TextWatcher для отслеживания изменений и предотвращения рекурсии
         private TextWatcher nameWatcher;
         private TextWatcher countWatcher;
-        private TextWatcher typeWatcher;
 
         ViewHolder(@NonNull View itemView, IngredientUpdateListener listener) {
             super(itemView);
@@ -65,6 +66,39 @@ public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter
             countEditText = itemView.findViewById(R.id.edit_ingredient_count);
             typeEditText = itemView.findViewById(R.id.edit_ingredient_type);
             removeButton = itemView.findViewById(R.id.button_remove_ingredient);
+            
+            // Настройка выпадающего списка для поля названия ингредиента
+            ArrayAdapter<String> nameAdapter = new ArrayAdapter<>(
+                itemView.getContext(),
+                android.R.layout.simple_dropdown_item_1line,
+                itemView.getContext().getResources().getStringArray(R.array.ingredients_list)
+            );
+            nameEditText.setAdapter(nameAdapter);
+            nameEditText.setThreshold(2); // Показывать подсказки после ввода 2 символов
+            
+            // Обеспечим корректную ширину выпадающего списка для имени
+            nameEditText.setDropDownWidth(android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            
+            // Настройка выпадающего списка для поля типа ингредиента
+            ArrayAdapter<String> unitAdapter = new ArrayAdapter<>(
+                itemView.getContext(),
+                android.R.layout.simple_dropdown_item_1line,
+                itemView.getContext().getResources().getStringArray(R.array.ingredient_types)
+            );
+            typeEditText.setAdapter(unitAdapter);
+            
+            // Обеспечим корректную ширину выпадающего списка для типа
+            typeEditText.setDropDownWidth(android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            
+            // Настройка поля типа как выпадающего списка
+            typeEditText.setOnClickListener(v -> typeEditText.showDropDown());
+            typeEditText.setOnItemClickListener((parent, view, pos, id) -> {
+                String type = (String) parent.getItemAtPosition(pos);
+                if (currentIngredient != null) {
+                    currentIngredient.setType(type);
+                    listener.onIngredientUpdated(currentPosition, currentIngredient);
+                }
+            });
 
             removeButton.setOnClickListener(v -> {
                 if (currentPosition != RecyclerView.NO_POSITION) {
@@ -82,7 +116,7 @@ public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter
 
             nameEditText.setText(ingredient.getName());
             countEditText.setText(ingredient.getCount() > 0 ? String.valueOf(ingredient.getCount()) : "");
-            typeEditText.setText(ingredient.getType());
+            typeEditText.setText(ingredient.getType(), false);
             
             // Скрываем кнопку удаления только для первого ингредиента (индекс 0)
             // Остальные ингредиенты можно удалять, даже если они стали первыми после удаления предыдущих
@@ -99,7 +133,6 @@ public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter
         private void removeWatchers() {
             if (nameWatcher != null) nameEditText.removeTextChangedListener(nameWatcher);
             if (countWatcher != null) countEditText.removeTextChangedListener(countWatcher);
-            if (typeWatcher != null) typeEditText.removeTextChangedListener(typeWatcher);
         }
 
         private void addWatchers() {
@@ -127,20 +160,9 @@ public class IngredientAdapter extends ListAdapter<Ingredient, IngredientAdapter
                     }
                 }
             };
-
-            typeWatcher = new SimpleTextWatcher() {
-                @Override
-                public void afterTextChanged(Editable s) {
-                    if (currentIngredient != null) {
-                        currentIngredient.setType(s.toString().trim());
-                        listener.onIngredientUpdated(currentPosition, currentIngredient);
-                    }
-                }
-            };
-
+            
             nameEditText.addTextChangedListener(nameWatcher);
             countEditText.addTextChangedListener(countWatcher);
-            typeEditText.addTextChangedListener(typeWatcher);
         }
     }
 

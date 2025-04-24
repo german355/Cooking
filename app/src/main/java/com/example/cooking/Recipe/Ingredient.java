@@ -2,6 +2,7 @@ package com.example.cooking.Recipe;
 
 import android.os.Parcel;
 import android.os.Parcelable;
+import java.util.Objects;
 
 public class Ingredient implements Parcelable {
     private String name;
@@ -79,6 +80,24 @@ public class Ingredient implements Parcelable {
         dest.writeString(name);
         dest.writeInt(count);
         dest.writeString(type);
+    }
+
+    // Добавленные методы equals() и hashCode()
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Ingredient that = (Ingredient) o;
+        // Сравниваем поля, relevantные для DiffUtil
+        return count == that.count &&
+               Objects.equals(name, that.name) &&
+               Objects.equals(type, that.type);
+    }
+
+    @Override
+    public int hashCode() {
+        // Используем те же поля, что и в equals()
+        return Objects.hash(name, count, type);
     }
 
     // toString() для отладки

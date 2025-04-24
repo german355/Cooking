@@ -1,13 +1,16 @@
 package com.example.cooking.network.services;
 
 import android.util.Log;
+import okhttp3.ConnectionPool;
 import okhttp3.Interceptor;
 import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.logging.HttpLoggingInterceptor;
 
 import java.io.IOException;
+import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -104,11 +107,13 @@ public class HttpClientManager {
                     .readTimeout(READ_TIMEOUT, TimeUnit.SECONDS)
                     .writeTimeout(WRITE_TIMEOUT, TimeUnit.SECONDS)
                     .retryOnConnectionFailure(true)
-                    .addInterceptor(retryInterceptor)
+                    .connectionPool(new ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
+                    .protocols(Collections.singletonList(Protocol.HTTP_1_1))
                     .addInterceptor(loggingInterceptor)
+                    .addInterceptor(retryInterceptor)
                     .build();
             
-            Log.d(TAG, "Создан HTTP клиент с улучшенной обработкой ошибок");
+            Log.d(TAG, "Создан HTTP клиент с улучшенной обработкой ошибок, отключенным Keep-Alive и HTTP/1.1");
         }
         
         return client;

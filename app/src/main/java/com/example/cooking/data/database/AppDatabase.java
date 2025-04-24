@@ -9,7 +9,7 @@ import androidx.room.RoomDatabase;
 /**
  * Класс базы данных приложения
  */
-@Database(entities = {RecipeEntity.class}, version = 1, exportSchema = false)
+@Database(entities = {RecipeEntity.class, LikedRecipeEntity.class}, version = 2, exportSchema = false)
 public abstract class AppDatabase extends RoomDatabase {
     
     private static final String DATABASE_NAME = "recipes_database";
@@ -20,6 +20,12 @@ public abstract class AppDatabase extends RoomDatabase {
      * @return RecipeDao
      */
     public abstract RecipeDao recipeDao();
+    
+    /**
+     * Получить DAO для работы с рецептами
+     * @return RecipeDao
+     */
+    public abstract LikedRecipeDao likedRecipeDao();
     
     /**
      * Получить инстанс базы данных (Singleton pattern)
@@ -41,4 +47,4 @@ public abstract class AppDatabase extends RoomDatabase {
         }
         return INSTANCE;
     }
-} 
+}

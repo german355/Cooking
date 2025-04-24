@@ -1,275 +1,292 @@
 package com.example.cooking.data.repositories;
 
 import android.content.Context;
-import android.content.SharedPreferences;
 import android.util.Log;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 
-import com.example.cooking.Recipe.Ingredient;
+import androidx.lifecycle.LiveData;
+import androidx.lifecycle.Transformations;
+import androidx.lifecycle.MediatorLiveData;
+
 import com.example.cooking.Recipe.Recipe;
-import com.example.cooking.Recipe.Step;
 import com.example.cooking.config.ServerConfig;
-import com.example.cooking.network.api.LikedRecipesApi;
+import com.example.cooking.data.database.AppDatabase;
+import com.example.cooking.data.database.LikedRecipeDao;
+import com.example.cooking.data.database.LikedRecipeEntity;
+import com.example.cooking.data.database.RecipeDao;
+import com.example.cooking.data.database.RecipeEntity;
+import com.example.cooking.network.api.ApiService;
 import com.example.cooking.network.responses.RecipesResponse;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.reflect.TypeToken;
+import com.example.cooking.network.services.RetrofitClient;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
+// Импортируем RecipeLocalRepository
+import com.example.cooking.data.repositories.RecipeLocalRepository;
 
-import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-import okhttp3.OkHttpClient;
-import retrofit2.Call;
-import retrofit2.Callback;
-import retrofit2.Response;
-import retrofit2.Retrofit;
-import retrofit2.converter.gson.GsonConverterFactory;
-
-/**
- * Упрощенный репозиторий для управления данными лайкнутых рецептов.
- */
 public class LikedRecipesRepository {
     private static final String TAG = "LikedRecipesRepository";
-    private static final String LIKED_RECIPES_CACHE_KEY = "cached_liked_recipes";
-    private static final String LAST_UPDATE_TIME_KEY = "liked_recipes_last_update_time";
-    private static final long CACHE_EXPIRATION_TIME = 30 * 60 * 100; // 3 min
-    private static final String PREF_NAME = "liked_recipe_cache";
     private static final String API_URL = ServerConfig.BASE_API_URL;
-    
-    private final Context context;
-    private final LikedRecipesApi likedRecipesApi;
-    private static final Gson gson = new Gson();
-    
+    private final Context context; // Добавляем Context для проверки сети
+    private final LikedRecipeDao likedRecipeDao;
+    private final RecipeDao recipeDao;
+    private final ApiService apiService;
+    private final ExecutorService executor;
+    private final RecipeLocalRepository recipeLocalRepository; // Добавляем зависимость
+
     public interface LikedRecipesCallback {
         void onRecipesLoaded(List<Recipe> recipes);
         void onDataNotAvailable(String error);
     }
-    
+
     public LikedRecipesRepository(Context context) {
-        this.context = context;
-        
-        OkHttpClient httpClient = new OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .build();
-        
-        Gson gsonConverter = new GsonBuilder()
-                .setLenient()
-                .create();
-        
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(API_URL + "/")
-                .client(httpClient)
-                .addConverterFactory(GsonConverterFactory.create(gsonConverter))
-                .build();
-        
-        likedRecipesApi = retrofit.create(LikedRecipesApi.class);
+        this.context = context.getApplicationContext(); // Сохраняем Application Context
+        AppDatabase db = AppDatabase.getInstance(this.context);
+        likedRecipeDao = db.likedRecipeDao();
+        recipeDao = db.recipeDao();
+        executor = Executors.newSingleThreadExecutor();
+        // Создаем экземпляр RecipeLocalRepository
+        recipeLocalRepository = new RecipeLocalRepository(this.context);
+
+        // Получаем ApiService из общего RetrofitClient
+        apiService = RetrofitClient.getApiService();
     }
-    
+
     /**
-     * Получает лайкнутые рецепты, сначала проверяя кэш, затем загружая с сервера.
+     * Получить LiveData ПОЛНЫХ лайкнутых рецептов из локальной базы данных (Room).
+     * Загружает ID лайков, затем по этим ID получает полные данные из RecipeLocalRepository.
+     * Это основной метод для получения данных в UI.
      */
-    public void getLikedRecipes(String userId, final LikedRecipesCallback callback) {
-        Result<List<Recipe>> cachedResult = loadFromCache(userId);
-        if (cachedResult.isSuccess() && !isCacheExpired(userId)) {
-            callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
-            return;
-        }
-        
-        Call<RecipesResponse> call = likedRecipesApi.getLikedRecipes(userId);
-        call.enqueue(new Callback<RecipesResponse>() {
-            @Override
-            public void onResponse(Call<RecipesResponse> call, Response<RecipesResponse> response) {
-                if (response.isSuccessful() && response.body() != null) {
-                    RecipesResponse recipesResponse = response.body();
-                    if (recipesResponse.isSuccess() && recipesResponse.getRecipes() != null) {
-                        List<Recipe> recipes = recipesResponse.getRecipes();
-                        saveToCache(userId, recipes);
-                        callback.onRecipesLoaded(recipes);
-                    } else {
-                        if (cachedResult.isSuccess()) {
-                           callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
+    public LiveData<List<Recipe>> getLikedRecipes(String userId) {
+        syncLikedRecipesFromServerIfNeeded(userId); // Запускаем фоновую синхронизацию лайков
+
+        // Получаем LiveData списка ID лайкнутых рецептов (LikedRecipeEntity)
+        LiveData<List<LikedRecipeEntity>> likedEntitiesLiveData = likedRecipeDao.getLikedRecipesForUser(userId);
+
+        // Используем Transformations.switchMap для загрузки полных данных по ID
+        return Transformations.switchMap(likedEntitiesLiveData, entities -> {
+            MediatorLiveData<List<Recipe>> fullRecipesLiveData = new MediatorLiveData<>();
+            if (entities == null || entities.isEmpty()) {
+                fullRecipesLiveData.setValue(new ArrayList<>()); // Если лайков нет, возвращаем пустой список
+                return fullRecipesLiveData;
+            }
+
+            // Получаем LiveData всех рецептов из локальной базы
+            LiveData<List<Recipe>> allLocalRecipesLiveData = recipeLocalRepository.getAllRecipes();
+
+            // Используем MediatorLiveData для объединения данных
+            fullRecipesLiveData.addSource(allLocalRecipesLiveData, allLocalRecipes -> {
+                List<Recipe> likedFullRecipes = new ArrayList<>();
+                if (allLocalRecipes != null && !entities.isEmpty()) {
+                    // Создаем карту всех локальных рецептов для быстрого доступа по ID
+                    java.util.Map<Integer, Recipe> allRecipesMap = new java.util.HashMap<>();
+                    for (Recipe r : allLocalRecipes) {
+                        allRecipesMap.put(r.getId(), r);
+                    }
+
+                    // Формируем список лайкнутых рецептов с полными данными
+                    for (LikedRecipeEntity entity : entities) {
+                        Recipe fullRecipe = allRecipesMap.get(entity.getRecipeId());
+                        if (fullRecipe != null) {
+                            // Важно: Устанавливаем флаг isLiked вручную, т.к. он берется из общей таблицы
+                            fullRecipe.setLiked(true);
+                            likedFullRecipes.add(fullRecipe);
                         } else {
-                           callback.onDataNotAvailable("Ошибка в ответе сервера: " + recipesResponse.getMessage());
+                            // Если полного рецепта нет в локальной базе (маловероятно при правильной синхронизации)
+                            // Можно добавить заглушку или пропустить
+                             Log.w(TAG, "Полный рецепт для liked recipeId " + entity.getRecipeId() + " не найден в RecipeLocalRepository");
                         }
                     }
+                }
+                 // Сортируем по ID или дате, если нужно
+                // Collections.sort(likedFullRecipes, ...);
+                fullRecipesLiveData.setValue(likedFullRecipes);
+                Log.d(TAG, "Сформирован полный список лайкнутых рецептов: " + likedFullRecipes.size());
+            });
+
+            return fullRecipesLiveData;
+        });
+    }
+
+    /**
+     * Запускает синхронизацию с сервером, если необходимо (например, есть сеть).
+     * Можно добавить логику проверки времени последнего обновления.
+     */
+    public void syncLikedRecipesFromServerIfNeeded(final String userId) {
+        if (userId == null || userId.equals("0") || userId.isEmpty()) {
+             Log.w(TAG, "Пропуск синхронизации лайков: неверный userId=" + userId);
+             return;
+        }
+        if (!isNetworkAvailable()) {
+            Log.d(TAG, "Нет сети, синхронизация лайкнутых рецептов не выполняется.");
+            return;
+        }
+        Log.d(TAG, "Запуск синхронизации лайкнутых рецептов с сервером для userId: " + userId);
+        executor.execute(() -> fetchAndStoreLikedRecipes(userId));
+    }
+
+    /**
+     * Выполняет сетевой запрос и сохраняет результат в БД.
+     * Исправлено: использует общий apiService и обрабатывает RecipesResponse.
+     */
+    private void fetchAndStoreLikedRecipes(String userId) {
+         Log.d(TAG, "[fetchAndStore] Выполнение запроса к apiService.getLikedRecipes для userId: " + userId);
+         // Используем общий ApiService
+         retrofit2.Call<RecipesResponse> call = apiService.getLikedRecipes(userId);
+         try {
+             // Используем execute() для синхронного выполнения в фоновом потоке Executor'a
+             retrofit2.Response<RecipesResponse> response = call.execute();
+             Log.d(TAG, "[fetchAndStore] Получен ответ от сервера: Code=" + response.code() + ", isSuccessful=" + response.isSuccessful());
+
+             if (response.isSuccessful() && response.body() != null) {
+                 RecipesResponse recipesResponse = response.body();
+                 if (recipesResponse.isSuccess()){
+                    List<Recipe> recipes = recipesResponse.getRecipes();
+                    if (recipes != null) {
+                        Log.i(TAG, "[fetchAndStore] Успешно загружено " + recipes.size() + " лайкнутых рецептов с сервера для userId: " + userId);
+                        // Конвертируем и сохраняем
+                        storeServerLikedRecipes(userId, recipes);
+                    } else {
+                        Log.w(TAG, "[fetchAndStore] Сервер вернул success=true, но null список лайкнутых рецептов для userId: " + userId);
+                        // Очищаем локальные лайки, раз сервер говорит, что их нет
+                        storeServerLikedRecipes(userId, new ArrayList<>());
+                    }
                 } else {
-                    if (cachedResult.isSuccess()) {
-                           callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
-                     } else {
-                        callback.onDataNotAvailable("Ошибка HTTP: " + response.code());
-                     }
+                     // Сервер вернул success=false
+                     Log.e(TAG, "[fetchAndStore] Ошибка при синхронизации лайкнутых рецептов (success=false): " +
+                             "Code: " + response.code() + ", Message: " + recipesResponse.getMessage());
+                }
+             } else {
+                 // Неуспешный HTTP ответ
+                 Log.e(TAG, "[fetchAndStore] Ошибка при синхронизации лайкнутых рецептов (HTTP неудача): " +
+                         "Code: " + response.code() + ", Message: " + response.message()); // Логируем код и стандартное сообщение
+             }
+         } catch (Exception e) {
+             // Исключение при выполнении запроса или обработке ответа
+             Log.e(TAG, "[fetchAndStore] Исключение при синхронизации лайкнутых рецептов для userId: " + userId,
+                     e); // Логируем полный стектрейс
+         }
+    }
+
+    /**
+     * Конвертирует и сохраняет лайкнутые рецепты, полученные с сервера.
+     * Перезаписывает старые данные для пользователя.
+     */
+    private void storeServerLikedRecipes(String userId, List<Recipe> serverRecipes) {
+        executor.execute(() -> {
+            List<LikedRecipeEntity> likedEntitiesToInsert = new ArrayList<>();
+            List<RecipeEntity> recipeEntitiesToInsert = new ArrayList<>();
+
+            for (Recipe recipe : serverRecipes) {
+                if (recipe != null) { // Проверка на null
+                   // Создаем сущность для таблицы лайков
+                   likedEntitiesToInsert.add(new LikedRecipeEntity(recipe.getId(), userId));
+                   // Создаем сущность для основной таблицы рецептов (для обновления/вставки)
+                   recipeEntitiesToInsert.add(new RecipeEntity(recipe));
                 }
             }
-            
-            @Override
-            public void onFailure(Call<RecipesResponse> call, Throwable t) {
-                if (cachedResult.isSuccess()) {
-                    callback.onRecipesLoaded(((Result.Success<List<Recipe>>) cachedResult).getData());
-                 } else {
-                    callback.onDataNotAvailable("Ошибка сети: " + t.getMessage());
-                 }
+
+            // Выполняем операции в транзакции для атомарности
+            try {
+                 Log.d(TAG, "[DB Sync] Запуск транзакции для обновления лайков userId: " + userId);
+                AppDatabase.getInstance(context).runInTransaction(() -> {
+                    // 1. Очистить старые лайки для этого пользователя
+                    Log.d(TAG, "[DB Sync] Удаление старых записей из liked_recipes для userId: " + userId);
+                    likedRecipeDao.deleteAllForUser(userId);
+                    // 2. Вставить новые лайки, если они есть
+                    if (!likedEntitiesToInsert.isEmpty()) {
+                         Log.d(TAG, "[DB Sync] Вставка " + likedEntitiesToInsert.size() + " новых записей в liked_recipes для userId: " + userId);
+                        likedRecipeDao.insertAll(likedEntitiesToInsert);
+                    }
+                    // 3. Вставить/Обновить полные данные рецептов в основную таблицу recipes
+                    if (!recipeEntitiesToInsert.isEmpty()){
+                         Log.d(TAG, "[DB Sync] Вставка/Обновление " + recipeEntitiesToInsert.size() + " записей в recipes.");
+                        recipeDao.insertAll(recipeEntitiesToInsert); // Используем RecipeDao
+                    }
+                });
+                 Log.i(TAG, "[DB Sync] Транзакция обновления лайков для userId " + userId + " успешно завершена.");
+            } catch (Exception e) {
+                 Log.e(TAG, "[DB Sync] Ошибка во время транзакции обновления лайков для userId: " + userId, e);
             }
         });
     }
-    
+
     /**
-     * Сохраняет список лайкнутых рецептов в кэш.
+     * Добавить лайкнутый рецепт в локальную базу.
+     * Используется при действии пользователя "лайкнуть".
      */
-    private void saveToCache(String userId, List<Recipe> recipes) {
-        try {
-            JSONArray recipesArray = new JSONArray();
-            for (Recipe recipe : recipes) {
-                JSONObject recipeJson = new JSONObject();
-                recipeJson.put("id", recipe.getId());
-                recipeJson.put("title", recipe.getTitle());
-                recipeJson.put("ingredients", gson.toJson(recipe.getIngredients()));
-                recipeJson.put("instructions", gson.toJson(recipe.getSteps()));
-                recipeJson.put("created_at", recipe.getCreated_at());
-                recipeJson.put("userId", recipe.getUserId());
-                recipeJson.put("photo", recipe.getPhoto_url());
-                recipeJson.put("isLiked", recipe.isLiked());
-                recipesArray.put(recipeJson);
-            }
-            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-            SharedPreferences.Editor editor = prefs.edit();
-            editor.putString(LIKED_RECIPES_CACHE_KEY + "_" + userId, recipesArray.toString());
-            editor.putLong(LAST_UPDATE_TIME_KEY + "_" + userId, System.currentTimeMillis());
-            editor.apply();
-            Log.d(TAG, "Сохранено в кэш лайкнутых рецептов: " + recipes.size());
-        } catch (JSONException e) {
-            Log.e(TAG, "Ошибка при кэшировании рецептов", e);
-        }
+    public void insertLikedRecipeLocal(int recipeId, String userId) {
+        executor.execute(() -> {
+            Log.d(TAG, "Добавление лайка в локальную базу: recipeId=" + recipeId + ", userId=" + userId);
+            likedRecipeDao.insert(new LikedRecipeEntity(recipeId, userId));
+        });
+        // TODO: Добавить вызов API для синхронизации лайка с сервером
     }
-    
+
     /**
-     * Загружает лайкнутые рецепты из кэша.
+     * Удалить лайкнутый рецепт из локальной базы.
+     * Используется при действии пользователя "снять лайк" или при удалении рецепта.
      */
-    private Result<List<Recipe>> loadFromCache(String userId) {
-        try {
-            SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-            String cachedRecipes = prefs.getString(LIKED_RECIPES_CACHE_KEY + "_" + userId, null);
-            if (cachedRecipes != null && !cachedRecipes.isEmpty()) {
-                JSONArray recipesArray = new JSONArray(cachedRecipes);
-                List<Recipe> recipes = new ArrayList<>();
-                Type ingredientListType = new TypeToken<ArrayList<Ingredient>>() {}.getType();
-                Type stepListType = new TypeToken<ArrayList<Step>>() {}.getType();
+    public void deleteLikedRecipeLocal(int recipeId, String userId) {
+        executor.execute(() -> {
+            Log.d(TAG, "Удаление лайка из локальной базы: recipeId=" + recipeId + ", userId=" + userId);
+            likedRecipeDao.deleteById(recipeId, userId);
+        });
+         // TODO: Добавить вызов API для синхронизации снятия лайка с сервером
+    }
 
-                for (int i = 0; i < recipesArray.length(); i++) {
-                    JSONObject recipeJson = recipesArray.getJSONObject(i);
-                    Recipe recipe = new Recipe();
-                    recipe.setId(recipeJson.optInt("id", 0));
-                    recipe.setTitle(recipeJson.optString("title", ""));
+    /**
+     * Проверить, лайкнут ли рецепт локально (синхронно).
+     * ВНИМАНИЕ: Выполняет запрос к БД в вызывающем потоке. Не использовать в UI потоке!
+     * Лучше использовать LiveData<List<Recipe>> и проверять наличие в списке.
+     * Оставляем для возможного использования в фоновых задачах.
+     */
+    public boolean isRecipeLikedLocalSync(int recipeId, String userId) {
+         // Этот метод не рекомендуется использовать из UI потока.
+         // Room потребует @AllowMainThreadQueries или вызов из фонового потока.
+         // Лучше получать LiveData и проверять список.
+         // Если все же нужен синхронный вызов, его надо делать в executor'е или через suspend функцию в Kotlin.
+         Log.w(TAG, "Синхронная проверка лайка isRecipeLikedLocalSync - не рекомендуется для UI потока!");
+         // Возвращаем false или выбрасываем исключение, чтобы предотвратить неправильное использование
+         // return likedRecipeDao.isRecipeLiked(recipeId, userId); // Раскомментировать с осторожностью
+         return false; // Безопасное значение по умолчанию
+    }
 
-                    String ingredientsString = recipeJson.optString("ingredients", "");
-                    String stepsString = recipeJson.optString("instructions", "");
-
-                    List<Ingredient> ingredients = gson.fromJson(ingredientsString, ingredientListType);
-                    List<Step> steps = gson.fromJson(stepsString, stepListType);
-
-                    recipe.setIngredients(ingredients == null ? new ArrayList<>() : new ArrayList<>(ingredients));
-                    recipe.setSteps(steps == null ? new ArrayList<>() : new ArrayList<>(steps));
-
-                    recipe.setPhoto_url(recipeJson.optString("photo", ""));
-                    recipe.setCreated_at(recipeJson.optString("created_at", ""));
-                    recipe.setUserId(recipeJson.optString("userId", ""));
-                    recipe.setLiked(recipeJson.optBoolean("isLiked", true));
-                    recipes.add(recipe);
-                }
-                 Log.d(TAG, "Загружено из кэша лайкнутых рецептов: " + recipes.size());
-                return new Result.Success<>(recipes);
+    /**
+     * Обновить статус лайка (локально).
+     * Сетевой вызов для синхронизации должен быть в отдельном методе или сервисе.
+     */
+    public void updateLikeStatusLocal(int recipeId, String userId, boolean isLiked) {
+        executor.execute(() -> {
+            if (isLiked) {
+                Log.d(TAG, "Обновление статуса лайка (локально): добавление recipeId=" + recipeId + ", userId=" + userId);
+                likedRecipeDao.insert(new LikedRecipeEntity(recipeId, userId));
             } else {
-                 Log.d(TAG, "Кэш лайкнутых рецептов пуст или отсутствует");
-                return new Result.Error<>("Кэш пуст");
+                Log.d(TAG, "Обновление статуса лайка (локально): удаление recipeId=" + recipeId + ", userId=" + userId);
+                likedRecipeDao.deleteById(recipeId, userId);
             }
-        } catch (JSONException e) {
-            Log.e(TAG, "Ошибка при чтении кэша", e);
-            return new Result.Error<>("Ошибка при чтении кэша: " + e.getMessage());
-        }
+        });
+        // Сетевой вызов должен быть инициирован отдельно, например, из ViewModel
+        // updateLikeStatusOnServer(recipeId, userId, isLiked);
     }
-    
+
+    // --- Удаленные методы SharedPreferences ---
+    /*
+    public List<Recipe> loadLikedRecipesFromCache(Context context, String userId) { ... }
+    private void saveLikedRecipesToCache(Context context, String userId, List<Recipe> recipes) { ... }
+    public void syncLikedRecipesFromServer(String userId, final LikedRecipesCallback callback, Context context) { ... } // Старый метод синхронизации
+    */
+
     /**
-     * Проверяет, истек ли срок действия кэша для указанного пользователя.
+     * Проверяет доступность сети.
      */
-    private boolean isCacheExpired(String userId) {
-        SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        long lastUpdateTime = prefs.getLong(LAST_UPDATE_TIME_KEY + "_" + userId, 0);
-        boolean expired = System.currentTimeMillis() - lastUpdateTime > CACHE_EXPIRATION_TIME;
-        Log.d(TAG, "Проверка истечения кэша: " + (expired ? "Истек" : "Актуален"));
-        return expired;
+    private boolean isNetworkAvailable() {
+        ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo activeNetworkInfo = cm.getActiveNetworkInfo();
+        return activeNetworkInfo != null && activeNetworkInfo.isConnected();
     }
-    
-    /**
-     * Очищает кэш избранных рецептов для указанного пользователя
-     */
-    public void clearCache(String userId) {
-        SharedPreferences prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = prefs.edit();
-        editor.remove(LIKED_RECIPES_CACHE_KEY + "_" + userId);
-        editor.remove(LAST_UPDATE_TIME_KEY + "_" + userId);
-        editor.apply();
-        Log.d(TAG, "Кэш избранных рецептов очищен для пользователя: " + userId);
-    }
-    
-    /**
-     * Обновляет статус лайка для рецепта
-     * @param recipeId ID рецепта
-     * @param userId ID пользователя
-     * @param isLiked новый статус лайка
-     */
-    public void updateLikeStatus(int recipeId, String userId, boolean isLiked) {
-        try {
-            Log.d(TAG, "Обновление статуса лайка (заглушка): recipeId=" + recipeId + ", userId=" + userId + ", isLiked=" + isLiked);
-            clearCache(userId);
-        } catch (Exception e) {
-            Log.e(TAG, "Ошибка при обновлении статуса лайка", e);
-        }
-    }
-    
-    /**
-     * Класс результата операции.
-     */
-    abstract static class Result<T> {
-        abstract boolean isSuccess();
-        
-        static class Success<T> extends Result<T> {
-            private final T data;
-            
-            Success(T data) {
-                this.data = data;
-            }
-            
-            T getData() {
-                return data;
-            }
-            
-            @Override
-            boolean isSuccess() {
-                return true;
-            }
-        }
-        
-        static class Error<T> extends Result<T> {
-            private final String errorMessage;
-            
-            Error(String errorMessage) {
-                this.errorMessage = errorMessage;
-            }
-            
-            String getErrorMessage() {
-                return errorMessage;
-            }
-            
-            @Override
-            boolean isSuccess() {
-                return false;
-            }
-        }
-    }
-} 
+}

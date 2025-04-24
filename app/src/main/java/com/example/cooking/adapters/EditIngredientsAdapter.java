@@ -7,8 +7,11 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
+import android.widget.AutoCompleteTextView;
+import android.widget.ArrayAdapter;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.cooking.R;
@@ -23,7 +26,7 @@ import java.util.List;
  */
 public class EditIngredientsAdapter extends RecyclerView.Adapter<EditIngredientsAdapter.IngredientViewHolder> {
 
-    private List<Ingredient> ingredients;
+    private final List<Ingredient> ingredients;
     private final Context context;
     private final IngredientInteractionListener listener;
 
@@ -42,11 +45,16 @@ public class EditIngredientsAdapter extends RecyclerView.Adapter<EditIngredients
     }
 
     /**
-     * Обновляет список ингредиентов и уведомляет об изменении данных.
+     * Обновляет список ингредиентов с использованием DiffUtil и уведомляет об изменении данных.
      */
-    public void setIngredients(List<Ingredient> ingredients) {
-        this.ingredients = new ArrayList<>(ingredients);
-        notifyDataSetChanged();
+    public void setIngredients(List<Ingredient> newIngredients) {
+        IngredientDiffCallback diffCallback = new IngredientDiffCallback(this.ingredients, newIngredients);
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
+        
+        this.ingredients.clear();
+        this.ingredients.addAll(newIngredients);
+        
+        diffResult.dispatchUpdatesTo(this);
     }
 
     public List<Ingredient> getIngredients() {
@@ -72,30 +80,91 @@ public class EditIngredientsAdapter extends RecyclerView.Adapter<EditIngredients
     }
 
     public class IngredientViewHolder extends RecyclerView.ViewHolder {
-        private final TextInputEditText nameEditText;
+        private final AutoCompleteTextView nameEditText;
         private final TextInputEditText countEditText;
-        private final TextInputEditText typeEditText;
+        private final AutoCompleteTextView typeAutoCompleteTextView;
         private final ImageButton removeButton;
-        
-        private Ingredient currentIngredient;
-        private int currentPosition;
         
         private TextWatcher nameWatcher;
         private TextWatcher countWatcher;
-        private TextWatcher typeWatcher;
+        
+        private final ArrayAdapter<String> unitAdapter;
 
         public IngredientViewHolder(@NonNull View itemView) {
             super(itemView);
             nameEditText = itemView.findViewById(R.id.edit_ingredient_name);
             countEditText = itemView.findViewById(R.id.edit_ingredient_count);
-            typeEditText = itemView.findViewById(R.id.edit_ingredient_type);
+            typeAutoCompleteTextView = itemView.findViewById(R.id.edit_ingredient_type);
             removeButton = itemView.findViewById(R.id.button_remove_ingredient);
+            
+            // Настройка выпадающего списка для поля названия ингредиента
+            ArrayAdapter<String> nameAdapter = new ArrayAdapter<>(
+                context,
+                android.R.layout.simple_dropdown_item_1line,
+                context.getResources().getStringArray(R.array.ingredients_list)
+            );
+            nameEditText.setAdapter(nameAdapter);
+            nameEditText.setThreshold(2); // Показывать подсказки после ввода 2 символов
+            
+            // Обеспечим корректную ширину выпадающего списка для имени
+            nameEditText.setDropDownWidth(android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            
+            // Настройка выпадающего списка для поля единицы измерения
+            unitAdapter = new ArrayAdapter<>(
+                context,
+                android.R.layout.simple_dropdown_item_1line,
+                context.getResources().getStringArray(R.array.ingredient_types)
+            );
+            typeAutoCompleteTextView.setAdapter(unitAdapter);
+            
+            // Обеспечим корректную ширину выпадающего списка для типа
+            typeAutoCompleteTextView.setDropDownWidth(android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            
+            // Настройка поля типа как выпадающего списка
+            typeAutoCompleteTextView.setOnClickListener(v -> typeAutoCompleteTextView.showDropDown());
+            typeAutoCompleteTextView.setOnItemClickListener((parent, view, pos, id) -> {
+                int position = getAdapterPosition();
+                if (position != RecyclerView.NO_POSITION) {
+                    String type = (String) parent.getItemAtPosition(pos);
+                    Ingredient ingredient = ingredients.get(position);
+                    ingredient.setType(type);
+                    listener.onIngredientUpdated(position, ingredient);
+                }
+            });
+            
+            // Инициализируем слушатели текста
+            nameWatcher = new SimpleTextWatcher() {
+                @Override
+                public void afterTextChanged(Editable s) {
+                    int position = getAdapterPosition();
+                    if (position != RecyclerView.NO_POSITION) {
+                        Ingredient ingredient = ingredients.get(position);
+                        ingredient.setName(s.toString().trim());
+                        listener.onIngredientUpdated(position, ingredient);
+                    }
+                }
+            };
+            
+            countWatcher = new SimpleTextWatcher() {
+                @Override
+                public void afterTextChanged(Editable s) {
+                    int position = getAdapterPosition();
+                    if (position != RecyclerView.NO_POSITION) {
+                        Ingredient ingredient = ingredients.get(position);
+                        try {
+                            int count = s.toString().isEmpty() ? 0 : Integer.parseInt(s.toString());
+                            ingredient.setCount(count);
+                            listener.onIngredientUpdated(position, ingredient);
+                        } catch (NumberFormatException e) {
+                            // Игнорируем неверный формат
+                        }
+                    }
+                }
+            };
             
             removeButton.setOnClickListener(v -> {
                 if (getAdapterPosition() != RecyclerView.NO_POSITION) {
                     listener.onIngredientRemoved(getAdapterPosition());
-                    ingredients.remove(getAdapterPosition());
-                    notifyItemRemoved(getAdapterPosition());
                 }
             });
         }
@@ -104,83 +173,67 @@ public class EditIngredientsAdapter extends RecyclerView.Adapter<EditIngredients
          * Привязывает данные ингредиента к элементам UI.
          */
         public void bind(Ingredient ingredient, int position) {
-            currentIngredient = ingredient;
-            currentPosition = position;
-            
-            // Удаляем предыдущие слушатели перед установкой текста
             removeTextWatchers();
             
-            // Устанавливаем текущие значения
             nameEditText.setText(ingredient.getName());
             countEditText.setText(ingredient.getCount() > 0 ? String.valueOf(ingredient.getCount()) : "");
-            typeEditText.setText(ingredient.getType());
+            typeAutoCompleteTextView.setText(ingredient.getType(), false);
             
-            // Скрываем кнопку удаления только для первого ингредиента (индекс 0)
-            // Остальные ингредиенты можно удалять, даже если они стали первыми после удаления предыдущих
             if (position == 0) {
                 removeButton.setVisibility(View.GONE);
             } else {
                 removeButton.setVisibility(View.VISIBLE);
             }
             
-            // Добавляем слушатели изменений
-            setupTextWatchers();
+            attachTextWatchers();
         }
         
         private void removeTextWatchers() {
-            if (nameWatcher != null) nameEditText.removeTextChangedListener(nameWatcher);
-            if (countWatcher != null) countEditText.removeTextChangedListener(countWatcher);
-            if (typeWatcher != null) typeEditText.removeTextChangedListener(typeWatcher);
+            nameEditText.removeTextChangedListener(nameWatcher);
+            countEditText.removeTextChangedListener(countWatcher);
         }
         
-        private void setupTextWatchers() {
-            nameWatcher = new SimpleTextWatcher() {
-                @Override
-                public void afterTextChanged(Editable s) {
-                    if (currentIngredient != null) {
-                        currentIngredient.setName(s.toString().trim());
-                        listener.onIngredientUpdated(currentPosition, currentIngredient);
-                    }
-                }
-            };
-            
-            countWatcher = new SimpleTextWatcher() {
-                @Override
-                public void afterTextChanged(Editable s) {
-                    if (currentIngredient != null) {
-                        try {
-                            int count = s.toString().isEmpty() ? 0 : Integer.parseInt(s.toString());
-                            currentIngredient.setCount(count);
-                            listener.onIngredientUpdated(currentPosition, currentIngredient);
-                        } catch (NumberFormatException e) {
-                            // Игнорируем неверный формат
-                        }
-                    }
-                }
-            };
-            
-            typeWatcher = new SimpleTextWatcher() {
-                @Override
-                public void afterTextChanged(Editable s) {
-                    if (currentIngredient != null) {
-                        currentIngredient.setType(s.toString().trim());
-                        listener.onIngredientUpdated(currentPosition, currentIngredient);
-                    }
-                }
-            };
-            
+        private void attachTextWatchers() {
             nameEditText.addTextChangedListener(nameWatcher);
             countEditText.addTextChangedListener(countWatcher);
-            typeEditText.addTextChangedListener(typeWatcher);
         }
     }
     
-    // Вспомогательный класс для упрощения реализации TextWatcher
     private static abstract class SimpleTextWatcher implements TextWatcher {
         @Override
         public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
         
         @Override
         public void onTextChanged(CharSequence s, int start, int before, int count) {}
+    }
+    
+    private static class IngredientDiffCallback extends DiffUtil.Callback {
+        private final List<Ingredient> oldList;
+        private final List<Ingredient> newList;
+        
+        public IngredientDiffCallback(List<Ingredient> oldList, List<Ingredient> newList) {
+            this.oldList = oldList;
+            this.newList = newList;
+        }
+        
+        @Override
+        public int getOldListSize() {
+            return oldList.size();
+        }
+        
+        @Override
+        public int getNewListSize() {
+            return newList.size();
+        }
+        
+        @Override
+        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+            return oldList.get(oldItemPosition).equals(newList.get(newItemPosition));
+        }
+        
+        @Override
+        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+            return oldList.get(oldItemPosition).equals(newList.get(newItemPosition));
+        }
     }
 } 

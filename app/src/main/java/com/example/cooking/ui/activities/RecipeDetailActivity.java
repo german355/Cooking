@@ -77,14 +77,6 @@ public class RecipeDetailActivity extends AppCompatActivity {
      */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Установка темы до вызова super.onCreate и setContentView
-        // Пример: если тема хранится в SharedPreferences
-        String themePref = getSharedPreferences("settings", MODE_PRIVATE).getString("theme", "light");
-        if ("dark".equals(themePref)) {
-            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES);
-        } else {
-            androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO);
-        }
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_recipe_detail);
 

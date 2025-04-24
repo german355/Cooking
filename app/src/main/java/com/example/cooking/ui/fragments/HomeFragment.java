@@ -132,6 +132,11 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
         // Наблюдаем за данными из ViewModel
         observeViewModel();
         
+        // Инициализируем наблюдение за Shared ViewModel
+        if (getActivity() != null) {
+            viewModel.observeLikeChanges(getViewLifecycleOwner(), getActivity());
+        }
+        
         // Загружаем данные при первом запуске
         if (savedInstanceState == null) {
             viewModel.refreshRecipes();
@@ -213,65 +218,18 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
         
         // Обновляем состояние в ViewModel (это обновит и локальную базу, и сервер)
         viewModel.updateLikeStatus(recipe, isLiked);
-        
-        // Если рецепт был лайкнут, добавляем его в FavoritesFragment
+
+        // TODO: Реализовать обновление статуса лайка в FavoritesFragment через Shared ViewModel
+        // Удаляем прямые вызовы статических методов FavoritesFragment
+        /*
         if (isLiked) {
             Log.d(TAG, "Добавляем рецепт в FavoritesFragment: " + recipe.getId() + " - " + recipe.getTitle());
             FavoritesFragment.addLikedRecipe(recipe);
         } else {
-            // Если лайк был снят, удаляем рецепт из FavoritesFragment
             Log.d(TAG, "Удаляем рецепт из FavoritesFragment: " + recipe.getId());
             FavoritesFragment.removeLikedRecipe(recipe.getId());
         }
-    }
-    
-    /**
-     * Обновляет состояние лайка для указанного рецепта
-     * @param recipeId ID рецепта
-     * @param isLiked новое состояние лайка
-     */
-    public void updateRecipeLikeStatus(int recipeId, boolean isLiked) {
-        Log.d(TAG, "Обновляем состояние лайка для рецепта " + recipeId + " на " + isLiked);
-        
-        // Получаем текущий список рецептов из адаптера
-        List<Recipe> currentRecipes = adapter.getCurrentList();
-        
-        // Создаем новый список для обновления
-        List<Recipe> updatedRecipes = new ArrayList<>();
-        
-        // Обновляем состояние лайка для нужного рецепта
-        for (Recipe recipe : currentRecipes) {
-            if (recipe.getId() == recipeId) {
-                // Создаем копию рецепта с обновленным состоянием лайка
-                Recipe updatedRecipe = new Recipe();
-                updatedRecipe.setId(recipe.getId());
-                updatedRecipe.setTitle(recipe.getTitle());
-                updatedRecipe.setIngredients(recipe.getIngredients());
-                updatedRecipe.setSteps(recipe.getSteps());
-                updatedRecipe.setPhoto_url(recipe.getPhoto_url());
-                updatedRecipe.setCreated_at(recipe.getCreated_at());
-                updatedRecipe.setUserId(recipe.getUserId());
-                updatedRecipe.setLiked(isLiked);
-                
-                updatedRecipes.add(updatedRecipe);
-                Log.d(TAG, "Найден рецепт " + recipeId + ", обновлено состояние лайка на " + isLiked);
-            } else {
-                updatedRecipes.add(recipe);
-            }
-        }
-        
-        // Обновляем список в адаптере
-        if (isAdded()) {
-            requireActivity().runOnUiThread(() -> {
-                adapter.submitList(updatedRecipes);
-                Log.d(TAG, "Список рецептов обновлен в UI");
-            });
-        }
-        
-        // Обновляем состояние в локальной базе данных
-        if (recipeId > 0) {
-            viewModel.updateLocalLikeStatus(recipeId, isLiked);
-        }
+        */
     }
     
     /**

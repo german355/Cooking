@@ -10,11 +10,13 @@ import android.widget.ImageButton;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.cooking.R;
 import com.example.cooking.Recipe.Step;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -22,7 +24,7 @@ import java.util.List;
  */
 public class EditStepsAdapter extends RecyclerView.Adapter<EditStepsAdapter.StepViewHolder> {
 
-    private List<Step> steps;
+    private final List<Step> steps;
     private final StepInteractionListener listener;
 
     /**
@@ -33,17 +35,22 @@ public class EditStepsAdapter extends RecyclerView.Adapter<EditStepsAdapter.Step
         void onStepRemove(int position);
     }
 
-    public EditStepsAdapter(List<Step> steps, StepInteractionListener listener) {
-        this.steps = steps;
+    public EditStepsAdapter(List<Step> initialSteps, StepInteractionListener listener) {
+        this.steps = new ArrayList<>(initialSteps);
         this.listener = listener;
     }
 
     /**
-     * Обновляет список шагов и уведомляет об изменении данных.
+     * Обновляет список шагов с использованием DiffUtil и уведомляет об изменении данных.
      */
     public void updateSteps(List<Step> newSteps) {
-        this.steps = newSteps;
-        notifyDataSetChanged();
+        StepDiffCallback diffCallback = new StepDiffCallback(this.steps, newSteps);
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
+        
+        this.steps.clear();
+        this.steps.addAll(newSteps);
+        
+        diffResult.dispatchUpdatesTo(this);
     }
 
     @NonNull
@@ -68,7 +75,7 @@ public class EditStepsAdapter extends RecyclerView.Adapter<EditStepsAdapter.Step
         private final TextView stepNumberTextView;
         private final EditText stepInstructionEditText;
         private final ImageButton removeButton;
-        private boolean isInitializing = true;
+        private TextWatcher instructionWatcher;
 
         StepViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -76,62 +83,52 @@ public class EditStepsAdapter extends RecyclerView.Adapter<EditStepsAdapter.Step
             stepInstructionEditText = itemView.findViewById(R.id.edit_step_instruction);
             removeButton = itemView.findViewById(R.id.button_remove_step);
 
-            // Настраиваем текстовое поле и кнопку удаления
-            setupTextWatchers();
+            // Инициализация текстового слушателя
+            instructionWatcher = new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) { }
+
+                @Override
+                public void afterTextChanged(Editable s) {
+                    int position = getAdapterPosition();
+                    if (position != RecyclerView.NO_POSITION && stepInstructionEditText.hasFocus()) {
+                        Step step = steps.get(position);
+                        step.setInstruction(s.toString());
+                        listener.onStepChanged(position, step);
+                    }
+                }
+            };
+            
             setupRemoveButton();
         }
 
-        /**
-         * Привязывает данные шага к элементам UI.
-         */
         void bind(Step step, int position) {
-            isInitializing = true; // Предотвращаем срабатывание слушателей при начальной установке значений
+            removeTextWatcher();
 
-            // Устанавливаем номер шага (позиция + 1)
             stepNumberTextView.setText(String.format("Шаг %d", position + 1));
 
-            // Устанавливаем описание шага
             stepInstructionEditText.setText(step.getInstruction());
             
-            // Скрываем кнопку удаления только для первого шага (индекс 0)
-            // Остальные шаги можно удалять, даже если они стали первыми после удаления предыдущих
             if (position == 0) {
                 removeButton.setVisibility(View.GONE);
             } else {
                 removeButton.setVisibility(View.VISIBLE);
             }
 
-            isInitializing = false;
+            attachTextWatcher();
+        }
+        
+        private void removeTextWatcher() {
+            stepInstructionEditText.removeTextChangedListener(instructionWatcher);
+        }
+        
+        private void attachTextWatcher() {
+            stepInstructionEditText.addTextChangedListener(instructionWatcher);
         }
 
-        /**
-         * Настраивает TextWatcher для поля ввода описания.
-         */
-        private void setupTextWatchers() {
-            stepInstructionEditText.addTextChangedListener(new TextWatcher() {
-                @Override
-                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                }
-
-                @Override
-                public void onTextChanged(CharSequence s, int start, int before, int count) {
-                }
-
-                @Override
-                public void afterTextChanged(Editable s) {
-                    if (!isInitializing && getAdapterPosition() != RecyclerView.NO_POSITION) {
-                        int position = getAdapterPosition();
-                        Step step = steps.get(position);
-                        step.setInstruction(s.toString());
-                        listener.onStepChanged(position, step);
-                    }
-                }
-            });
-        }
-
-        /**
-         * Настраивает кнопку удаления шага.
-         */
         private void setupRemoveButton() {
             removeButton.setOnClickListener(v -> {
                 int position = getAdapterPosition();
@@ -139,6 +136,36 @@ public class EditStepsAdapter extends RecyclerView.Adapter<EditStepsAdapter.Step
                     listener.onStepRemove(position);
                 }
             });
+        }
+    }
+    
+    private static class StepDiffCallback extends DiffUtil.Callback {
+        private final List<Step> oldList;
+        private final List<Step> newList;
+        
+        public StepDiffCallback(List<Step> oldList, List<Step> newList) {
+            this.oldList = oldList;
+            this.newList = newList;
+        }
+        
+        @Override
+        public int getOldListSize() {
+            return oldList.size();
+        }
+        
+        @Override
+        public int getNewListSize() {
+            return newList.size();
+        }
+        
+        @Override
+        public boolean areItemsTheSame(int oldItemPosition, int newItemPosition) {
+            return oldList.get(oldItemPosition).equals(newList.get(newItemPosition));
+        }
+        
+        @Override
+        public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
+            return oldList.get(oldItemPosition).equals(newList.get(newItemPosition));
         }
     }
 } 

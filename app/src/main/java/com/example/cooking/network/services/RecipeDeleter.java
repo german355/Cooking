@@ -6,6 +6,9 @@ import android.util.Log;
 
 import com.example.cooking.config.ServerConfig;
 import com.example.cooking.data.repositories.RecipeRepository;
+import com.example.cooking.data.repositories.LikedRecipesRepository;
+import com.example.cooking.data.repositories.RecipeLocalRepository;
+import com.example.cooking.utils.MySharedPreferences;
 import org.json.JSONObject;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -86,7 +89,8 @@ public class RecipeDeleter {
                     if (response.code() == 403) {
                         errorMessage = "У вас нет прав на удаление этого рецепта. Только автор рецепта или администратор могут удалять рецепты.";
                     } else {
-                        errorMessage = "Server error: " + response.code();
+                         String errorBody = response.body() != null ? response.body().string() : "null";
+                         errorMessage = "Server error: " + response.code() + " Body: " + errorBody;
                     }
                     return false;
                 }
@@ -107,23 +111,31 @@ public class RecipeDeleter {
                 callback.onDeleteSuccess();
                 RecipeDeleter deleter = deleterRef.get();
                 if (deleter != null) {
-                    // Очищаем основной кэш рецептов
+                    // 1. Очищаем основной кэш рецептов (SharedPreferences + OkHttp)
                     RecipeRepository repository = new RecipeRepository(deleter.context);
                     repository.clearCache();
-                    
-                    // Также очищаем кэш лайкнутых рецептов
-                    // Получаем текущего пользователя из SharedPreferences
-                    com.example.cooking.utils.MySharedPreferences prefs = new com.example.cooking.utils.MySharedPreferences(deleter.context);
+                    Log.d(TAG, "Кэш RecipeRepository очищен.");
+
+                    // 2. Удаляем запись об этом рецепте из локальной базы лайкнутых, если она там была
+                    MySharedPreferences prefs = new MySharedPreferences(deleter.context);
                     String currentUserId = prefs.getString("userId", "0");
-                    
-                    // Очищаем кэш лайкнутых рецептов
-                    com.example.cooking.data.repositories.LikedRecipesRepository likedRepo = 
-                        new com.example.cooking.data.repositories.LikedRecipesRepository(deleter.context);
-                    likedRepo.clearCache(currentUserId);
-                    
-                    Log.d(TAG, "Все кэши очищены после удаления рецепта");
+
+                    if (!currentUserId.equals("0")) {
+                        LikedRecipesRepository likedRepo = new LikedRecipesRepository(deleter.context);
+                        likedRepo.deleteLikedRecipeLocal(recipeId, currentUserId);
+                        Log.d(TAG, "Запись о лайке для удаленного рецепта (ID: " + recipeId + ") удалена из локальной базы лайков.");
+                    } else {
+                        Log.w(TAG, "Не удалось получить currentUserId, удаление лайка пропущено.");
+                    }
+
+                    // 3. Удаляем сам рецепт из основной локальной базы данных (Room)
+                    RecipeLocalRepository localRepository = new RecipeLocalRepository(deleter.context);
+                    localRepository.deleteRecipe(recipeId);
+                    // Лог об удалении будет внутри deleteRecipe
+
+                    Log.d(TAG, "Кэш очищен, локальный лайк удален (если был), рецепт удален из локальной БД после успешного удаления с сервера.");
                 }
-                Log.d(TAG, "Рецепт был удален");
+                Log.d(TAG, "Рецепт был удален с сервера.");
             } else {
                 callback.onDeleteFailure(errorMessage);
             }

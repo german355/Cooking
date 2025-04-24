@@ -143,6 +143,12 @@ public class RecipeRepository {
         };
 
         // Настраиваем OkHttpClient с кэшем и интерцепторами
+        // =======================================================================
+        // TODO: Использовать общий OkHttpClient для всех репозиториев!
+        // В идеале настроить Dependency Injection (Hilt/Dagger)
+        // или передавать единственный экземпляр OkHttpClient в конструкторы.
+        // Текущая конфигурация может привести к разным кэшам и поведению сети.
+        // =======================================================================
         OkHttpClient httpClient = new OkHttpClient.Builder()
                 .cache(cache)
                 .addInterceptor(new AuthInterceptor())

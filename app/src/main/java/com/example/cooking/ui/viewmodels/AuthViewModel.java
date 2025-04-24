@@ -12,6 +12,7 @@ import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import com.example.cooking.auth.FirebaseAuthManager;
+import com.example.cooking.data.repositories.LikedRecipesRepository;
 import com.example.cooking.utils.MySharedPreferences;
 import com.example.cooking.data.models.ApiResponse;
 import com.example.cooking.network.services.UserService;
@@ -26,6 +27,7 @@ public class AuthViewModel extends AndroidViewModel {
     private final FirebaseAuthManager authManager;
     private final MySharedPreferences preferences;
     private final UserService userService;
+    private final LikedRecipesRepository likedRecipesRepository;
 
     // LiveData для состояний UI
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
@@ -48,8 +50,8 @@ public class AuthViewModel extends AndroidViewModel {
         authManager = new FirebaseAuthManager(application);
         preferences = new MySharedPreferences(application);
         userService = new UserService();
+        likedRecipesRepository = new LikedRecipesRepository(application);
 
-        // Проверяем текущее состояние аутентификации
         checkAuthenticationState();
     }
 
@@ -84,47 +86,41 @@ public class AuthViewModel extends AndroidViewModel {
             @Override
             public void onSuccess(FirebaseUser user) {
                 if (user != null) {
-                    // После успешного входа в Firebase, логинимся на нашем сервере
                     Log.d(TAG, "Firebase login success, calling server login for user: " + user.getEmail());
                     userService.loginFirebaseUser(user.getEmail(), user.getUid(), new UserService.UserCallback() {
                         @Override
                         public void onSuccess(ApiResponse response) {
-                            // Получаем внутренний ID и права из ответа сервера
                             String internalUserId = response.getUserId();
-                            int permissionLevel = response.getPermission(); // Получаем permission
+                            int permissionLevel = response.getPermission();
                             if (internalUserId == null || internalUserId.isEmpty()) {
-                                Log.e(TAG,
-                                        "Внутренний userId не пришел от сервера при логине! Сохраняем Firebase UID.");
-                                internalUserId = user.getUid(); // Запасной вариант
+                                Log.e(TAG, "Внутренний userId не пришел от сервера при логине! Используем Firebase UID.");
+                                internalUserId = user.getUid();
                             }
-                            if (permissionLevel == 0) { // Если сервер не вернул или вернул 0
-                                Log.w(TAG,
-                                        "Уровень прав не пришел от сервера при логине. Установлен 1 (обычный пользователь).");
-                                permissionLevel = 1; // Значение по умолчанию
+                            if (permissionLevel == 0) {
+                                Log.w(TAG, "Уровень прав не пришел от сервера при логине. Установлен 1.");
+                                permissionLevel = 1;
                             }
-                            // Сохраняем данные с внутренним ID и правами
                             saveUserData(user, internalUserId, permissionLevel);
                             isLoading.postValue(false);
                             isAuthenticated.postValue(true);
-                            Log.d(TAG, "signInWithEmailPassword: Успешный вход, ID: " + internalUserId + ", Права: "
-                                    + permissionLevel);
+                            Log.d(TAG, "signInWithEmailPassword: Успешный вход, ID: " + internalUserId + ", Права: " + permissionLevel);
+
+                            // <--- ВЫЗОВ СИНХРОНИЗАЦИИ ЧЕРЕЗ РЕПОЗИТОРИЙ --->
+                            Log.i(TAG, "Запуск синхронизации лайков через LikedRecipesRepository для userId: " + internalUserId);
+                            likedRecipesRepository.syncLikedRecipesFromServerIfNeeded(internalUserId);
+                            // <------------------------------------------------>
                         }
 
                         @Override
                         public void onFailure(String errorMessage) {
-                            // Ошибка при логине на НАШЕМ сервере
                             Log.e(TAG, "Ошибка логина на сервере: " + errorMessage);
-                            // Сохраняем Firebase UID и права по умолчанию (1) при ошибке сервера
                             saveUserData(user, user.getUid(), 1);
                             isLoading.postValue(false);
-                            isAuthenticated.postValue(true); // Считаем аутентифицированным локально
-                            // Устанавливаем сообщение об ошибке, чтобы показать его пользователю
-                            AuthViewModel.this.errorMessage
-                                    .postValue("Ошибка синхронизации с сервером: " + errorMessage);
+                            isAuthenticated.postValue(true);
+                            AuthViewModel.this.errorMessage.postValue("Ошибка синхронизации с сервером: " + errorMessage);
                         }
                     });
                 } else {
-                    // Сюда не должны попасть, если authManager.onSuccess сработал
                     isLoading.postValue(false);
                     errorMessage.postValue("Ошибка: Firebase User == null после успешного входа");
                 }
@@ -132,7 +128,6 @@ public class AuthViewModel extends AndroidViewModel {
 
             @Override
             public void onError(String message) {
-                // Ошибка входа в Firebase
                 isLoading.postValue(false);
                 errorMessage.postValue(message);
                 Log.e(TAG, "signInWithEmailPassword: Ошибка входа в Firebase: " + message);
