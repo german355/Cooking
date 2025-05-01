@@ -68,6 +68,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata:2.6.2")
 
+    // WorkManager для фоновой синхронизации в LTR-клиенте
+    implementation("androidx.work:work-runtime:2.9.0")
+
     // Зависимости Navigation Component
     val nav_version = "2.7.7"
     // implementation("androidx.navigation:navigation-fragment-ktx:$nav_version") // Используем ktx для Kotlin - ЗАМЕНЯЕТСЯ

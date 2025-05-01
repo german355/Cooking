@@ -7,7 +7,7 @@ public class ServerConfig {
     
     /**
      * Базовый URL API сервера
-     * Формат: http://домен:порт или http://IP-адрес:порт
+     * Формат: http://домен:порт
      */
     public static String BASE_API_URL = "http://r1.veroid.network:10009";
     
