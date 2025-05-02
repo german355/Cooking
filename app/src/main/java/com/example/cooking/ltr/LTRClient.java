@@ -24,7 +24,7 @@ public class LTRClient {
     private final LTRApiClient apiClient;
     private final LTRCacheManager cacheManager;
 
-    private String serverUrl = "https://api.cooking-server.com/v2/";
+    private String serverUrl = "http://api.cooking-server.com/v2/";
     private String apiKey;
     private boolean isPersonalizationEnabled = true;
 

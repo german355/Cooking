@@ -212,7 +212,7 @@ public class CookingApplication extends Application {
         
         // Инициализация LTR клиентского SDK
         LTRClient.getInstance(this)
-                .setServerUrl("https://api.cooking-server.com")
+                .setServerUrl("http://api.cooking-server.com")
                 .setApiKey("YOUR_API_KEY")
                 .enablePersonalization(true)
                 .initialize();

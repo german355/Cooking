@@ -11,12 +11,12 @@ public class LTRServerConfig {
      * Используем тот же хост, что и основное API приложения, но с другим
      * контекстным путем
      */
-    public static final String BASE_URL = "http://r1.veroid.network:10009/ltr/v2/";
+    public static final String BASE_URL = "http://89.35.130.107/ltr/v2/";
 
     /**
      * API ключ для авторизации на сервере (должен быть заменен на реальный)
      */
-    public static final String API_KEY = "PLACEHOLDER_API_KEY";
+    public static final String API_KEY = "http://89.35.130.107/";
 
     /* Эндпоинты для получения данных */
 

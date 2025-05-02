@@ -11,6 +11,7 @@ import com.example.cooking.ltr.network.models.ClickEventRequest;
 import com.example.cooking.ltr.network.models.FavoriteSyncRequest;
 import com.example.cooking.ltr.network.models.SearchResponse;
 import com.example.cooking.ltr.network.models.SimilarRecipesResponse;
+import com.example.cooking.network.services.RetrofitClient;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -53,11 +54,8 @@ public class LTRApiClient {
      * Инициализация клиента API
      */
     public void initialize() {
-        // Создаем Retrofit для работы с API
-        retrofit = new Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build();
+        // Используем общий Retrofit клиент с URL для LTR
+        retrofit = RetrofitClient.getLtrClient(baseUrl);
 
         // Создаем API сервис
         apiService = retrofit.create(LTRApiService.class);

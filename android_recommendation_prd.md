@@ -191,7 +191,7 @@ GET /api/search
     {
       "id": "123",
       "title": "Куриный суп с лапшой",
-      "photo_url": "https://example.com/images/123.jpg",
+      "photo_url": "http://example.com/images/123.jpg",
       "score": 0.89,
       "ingredients": ["курица", "лапша", "морковь"],
       "time": 45,

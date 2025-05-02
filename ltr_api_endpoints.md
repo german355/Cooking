@@ -4,7 +4,7 @@
 
 ## Базовая информация
 
-- **Базовый URL**: `https://api.cooking-server.com/v2`
+- **Базовый URL**: `http://api.cooking-server.com/v2`
 - **Формат данных**: JSON
 - **Аутентификация**: Bearer Token
 - **Заголовки для всех запросов**:
@@ -66,7 +66,7 @@ GET /search?q=куриный%20суп&page=1&per_page=20&use_personalization=tru
       "rating": 4.8,
       "votes_count": 243,
       "cooking_time": 45,
-      "image_url": "https://cooking-server.com/images/recipes/12345.jpg",
+      "image_url": "http://cooking-server.com/images/recipes/12345.jpg",
       "ingredients_count": 8,
       "is_favorite": false,
       "category": {
@@ -338,7 +338,7 @@ GET /cache/data?last_sync=1682000000000&types=trending,favorites&max_size=50
       {
         "recipe_id": 12345,
         "title": "Куриный суп с лапшой",
-        "image_url": "https://cooking-server.com/images/recipes/12345.jpg",
+        "image_url": "http://cooking-server.com/images/recipes/12345.jpg",
         "cooking_time": 45,
         "category_id": 3
       },
@@ -348,7 +348,7 @@ GET /cache/data?last_sync=1682000000000&types=trending,favorites&max_size=50
       {
         "recipe_id": 67890,
         "title": "Паста карбонара",
-        "image_url": "https://cooking-server.com/images/recipes/67890.jpg",
+        "image_url": "http://cooking-server.com/images/recipes/67890.jpg",
         "cooking_time": 30,
         "category_id": 8
       },
@@ -440,7 +440,7 @@ GET /cache/data?last_sync=1682000000000&types=trending,favorites&max_size=50
   "difficulty": "easy",
   "portions": 4,
   "calories_per_portion": 320,
-  "image_url": "https://cooking-server.com/images/recipes/12345.jpg",
+  "image_url": "http://cooking-server.com/images/recipes/12345.jpg",
   "ingredients": [
     {
       "name": "Курица",

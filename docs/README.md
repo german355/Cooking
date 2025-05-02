@@ -35,7 +35,7 @@ _Диаграмма классов представлена в формате и
 1. Установите Android Studio (рекомендуется последняя версия)
 2. Клонируйте репозиторий:
    ```
-   git clone https://github.com/your-username/cooking-app.git
+   git clone http://github.com/your-username/cooking-app.git
    ```
 3. Откройте проект в Android Studio
 4. Синхронизируйте Gradle-файлы

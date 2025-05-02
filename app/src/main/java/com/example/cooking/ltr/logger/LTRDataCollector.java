@@ -15,6 +15,7 @@ import com.example.cooking.ltr.models.SearchResult;
 import com.example.cooking.ltr.network.api.LTRApiService;
 import com.example.cooking.ltr.network.models.ClickEventRequest;
 import com.example.cooking.ltr.network.models.FavoriteActionRequest;
+import com.example.cooking.network.services.RetrofitClient;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
@@ -60,17 +61,8 @@ public class LTRDataCollector {
      * Инициализация коллектора данных
      */
     public void initialize() {
-        // Убедимся, что URL заканчивается на "/"
-        String baseUrl = BASE_URL;
-        if (!baseUrl.endsWith("/")) {
-            baseUrl = baseUrl + "/";
-        }
-
-        // Создаем Retrofit для работы с API
-        Retrofit retrofit = new Retrofit.Builder()
-                .baseUrl(baseUrl)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build();
+        // Используем общий Retrofit клиент с URL для LTR
+        Retrofit retrofit = RetrofitClient.getLtrClient(BASE_URL);
 
         // Создаем API сервис
         apiService = retrofit.create(LTRApiService.class);

@@ -19,7 +19,7 @@ public interface RecipeApiService {
      * Если recipeId != null, редактируется существующий рецепт
      */
     @Multipart
-    @POST("/addrecipes")
+    @POST("/recipes/add")
     Call<ResponseBody> addOrUpdateRecipe(
             @Part("title") RequestBody title,
             @Part("ingredients") RequestBody ingredients,
@@ -33,7 +33,7 @@ public interface RecipeApiService {
      * Метод для добавления или редактирования рецепта без фото
      */
     @Multipart
-    @POST("/addrecipes")
+    @POST("/recipes/add")
     Call<ResponseBody> addOrUpdateRecipeWithoutPhoto(
             @Part("title") RequestBody title,
             @Part("ingredients") RequestBody ingredients,
