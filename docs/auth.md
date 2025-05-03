@@ -1,187 +1,106 @@
-# Система авторизации в приложении "Cooking"
+# Система авторизации в приложении "Cooking App"
 
-## Обзор системы авторизации
+## 1. Общий обзор
 
-Приложение "Cooking" использует Firebase Authentication для управления аутентификацией пользователей. Система авторизации обеспечивает следующие функции:
+Аутентификация в приложении реализована на основе **Firebase Authentication** (Email/Password и Google Sign-In) и дополнена серверной синхронизацией через собственный API. Логика управления находится в `AuthViewModel`, который:
 
-- Регистрация новых пользователей (email/пароль)
-- Авторизация существующих пользователей (email/пароль)
-- Авторизация через Google Sign-In
-- Восстановление пароля
-- Управление профилем пользователя
-- Безопасный выход из аккаунта
-- Удаление аккаунта
+1. Использует `FirebaseAuthManager` для входа/регистрации в Firebase.
+2. После успешного входа/регистрации вызывает методы `UserService` (`loginFirebaseUser`, `registerFirebaseUser`) для получения внутреннего `userId` и уровня доступа `permission` от сервера.
+3. Сохраняет `userId`, `username`, `email` и `permission` в `MySharedPreferences`.
+4. Запускает синхронизацию лайков через `LikedRecipesRepository`.
+5. Управляет состоянием UI через `LiveData`: `isLoading`, `errorMessage`, `isAuthenticated`, `displayName`, `email`, `permission`.
 
-## Архитектура системы авторизации
+## 2. Ключевые классы и компоненты
 
-### Компоненты
+- **FirebaseAuthManager** (`com.example.cooking.auth.FirebaseAuthManager`)
+  - Обёртка над Firebase SDK для Email/Password и Google Sign-In.
+  - Методы: `signInWithEmailAndPassword`, `registerWithEmailAndPassword`, `updateUserDisplayName`, `signOut`, `initGoogleSignIn`, `handleGoogleSignInResult`.
 
-1. **FirebaseAuthManager** - центральный класс, управляющий взаимодействием с Firebase Authentication
-2. **AuthViewModel** - ViewModel для экрана авторизации
-3. **ProfileViewModel** - ViewModel для экрана профиля
-4. **MainViewModel** - ViewModel для основной активности, отслеживает состояние авторизации
-5. **AuthFragment** - UI-компонент для авторизации пользователя
-6. **ProfileFragment** - UI-компонент для отображения и управления профилем
-7. **RegisterActivity (Regist)** - Активность для регистрации нового пользователя
+- **AuthViewModel** (`com.example.cooking.ui.viewmodels.AuthViewModel`)
+  - Методы:
+    - `signInWithEmailPassword(email, password)`
+    - `registerUser(email, password, username)`
+    - `signInWithGoogle(activity)`
+    - `handleGoogleSignInResult(requestCode, resultCode, data)`
+    - `signOut()`
+  - LiveData:
+    - `LiveData<Boolean> isLoading` — состояние загрузки.
+    - `LiveData<String> errorMessage` — текст ошибок.
+    - `LiveData<Boolean> isAuthenticated` — флаг аутентификации.
+    - `LiveData<String> displayName`, `LiveData<String> email`, `LiveData<Integer> permission` — данные пользователя.
+  - Валидация форм: `validateEmail`, `validatePassword`, `validateName`, `validatePasswordConfirmation`.
 
-### Диаграмма взаимодействия компонентов
+- **UserService** (`com.example.cooking.network.services.UserService`)
+  - Сервис для вызова API:
+    - `loginFirebaseUser(email, firebaseId, callback)` — POST `/auth/login`.
+    - `registerFirebaseUser(email, username, firebaseId, callback)` — POST `/auth/register`.
+  - Колбэк получает `ApiResponse` с полями `success`, `userId`, `permission`, `message`.
 
-```
-┌─────────────┐     ┌───────────────┐     ┌───────────────────┐
-│ AuthFragment │◄───►│ AuthViewModel │◄───►│ FirebaseAuthManager│
-└─────────────┘     └───────────────┘     └───────────────────┘
-                          ▲                        ▲
-                          │                        │
-                          │                        │
-┌─────────────┐     ┌───────────────┐             │
-│ProfileFragment◄───►│ProfileViewModel◄─────────────┘
-└─────────────┘     └───────────────┘
-                          ▲
-                          │
-┌─────────────┐     ┌───────────────┐
-│ MainActivity │◄───►│ MainViewModel │
-└─────────────┘     └───────────────┘
-```
+- **MySharedPreferences** (`com.example.cooking.utils.MySharedPreferences`)
+  - Хранит: `userId`, `username`, `email`, `permission`, `token`.
 
-## Процессы авторизации
+- **LikedRecipesRepository** (`com.example.cooking.data.repositories.LikedRecipesRepository`)
+  - После успешного входа запускает `syncLikedRecipesFromServerIfNeeded(userId)` для загрузки актуального списка лайкнутых рецептов.
 
-### Регистрация нового пользователя
+## 3. Подробные сценарии
 
-1. Пользователь вводит email, пароль и другие данные в RegisterActivity
-2. AuthViewModel валидирует введенные данные
-3. При успешной валидации вызывается FirebaseAuthManager.registerUser()
-4. FirebaseAuthManager создает нового пользователя в Firebase
-5. Результат регистрации передается обратно в ViewModel через callback
-6. При успешной регистрации пользователь перенаправляется на экран входа
+### 3.1. Вход (Email/Password)
 
-### Авторизация пользователя через Email/Password
+1. `AuthFragment` получает ввод пользователя и вызывает `AuthViewModel.signInWithEmailPassword(email, password)`.
+2. Во ViewModel:
+   1. Валидация: `validateEmail`, `validatePassword`. При невалидных данных устанавливается `errorMessage`.
+   2. `isLoading.setValue(true)`.
+   3. `authManager.signInWithEmailAndPassword(...)`.
+3. В колбэке `onSuccess(FirebaseUser user)`:
+   1. `userService.loginFirebaseUser(user.getEmail(), user.getUid(), ...)`.
+   2. В `onSuccess(ApiResponse response)`:
+      - Получает `internalUserId = response.getUserId()` и `permission = response.getPermission()`.
+      - Если `userId` или `permission` отсутствуют — используются значения по умолчанию (`Firebase UID`, `1`).
+      - Вызывает `saveUserData(user, internalUserId, permission)`.
+      - `isLoading.postValue(false)` и `isAuthenticated.postValue(true)`.
+      - `likedRecipesRepository.syncLikedRecipesFromServerIfNeeded(internalUserId)`.
+   3. В `onFailure(...)`: сохраняет `Firebase UID` и `permission=1`, `isAuthenticated=true`, `errorMessage="Ошибка синхронизации..."`, `isLoading=false`.
+4. В `onError(String message)` (Firebase): `errorMessage.setValue(message)` и `isLoading=false`.
 
-1. Пользователь вводит email и пароль в AuthFragment
-2. AuthViewModel валидирует введенные данные
-3. При успешной валидации вызывается FirebaseAuthManager.signInWithEmailPassword()
-4. Результат авторизации передается обратно в ViewModel через callback
-5. При успешной авторизации:
-   - Данные пользователя сохраняются в SharedPreferences
-   - isAuthenticated устанавливается в true
-   - MainViewModel получает уведомление о смене статуса авторизации
-   - MainActivity переключает фрагмент с AuthFragment на ProfileFragment
+### 3.2. Регистрация (Email/Password)
 
-### Авторизация через Google
+1. `RegisterActivity` собирает `email`, `password`, `username` и вызывает `AuthViewModel.registerUser(...)`.
+2. Во ViewModel:
+   1. Валидация: `validateEmail`, `validatePassword`, `validateName`.
+   2. `isLoading.setValue(true)`.
+   3. `authManager.registerWithEmailAndPassword(email, password, ...)`.
+3. В `onSuccess(FirebaseUser user)`:
+   1. `authManager.updateUserDisplayName(user, username, ...)`.
+   2. В `onSuccess()`: `userService.registerFirebaseUser(user.getEmail(), username, user.getUid(), ...)`.
+   3. В `onSuccess(ApiResponse response)`:
+      - Получает `userId` и `permission`, сохраняет через `saveUserData`.
+      - `isLoading=false`, `isAuthenticated=true`.
+   4. В `onFailure(...)`: сохраняет `Firebase UID` и `permission=1`, `isAuthenticated=true`, `isLoading=false`.
+4. В `onError(String message)` (Firebase): `errorMessage.setValue(message)` и `isLoading=false`.
 
-1. Пользователь нажимает кнопку Google Sign-In в AuthFragment
-2. AuthViewModel вызывает FirebaseAuthManager.signInWithGoogle()
-3. Запускается интерфейс Google Sign-In через Intent
-4. Результат авторизации обрабатывается в onActivityResult() и передается в AuthViewModel
-5. При успешной авторизации последовательность действий аналогична авторизации через Email/Password
+### 3.3. Google Sign-In
 
-### Выход из аккаунта
+1. `AuthFragment` инициализирует Google Sign-In через `AuthViewModel.initGoogleSignIn(webClientId)`.
+2. При нажатии — `AuthViewModel.signInWithGoogle(activity)`.
+3. В `onActivityResult` вызывается `AuthViewModel.handleGoogleSignInResult(requestCode, resultCode, data)`.
+4. Аналогично Email/Password: после `onSuccess(FirebaseUser user)` вызывается `userService.loginFirebaseUser`, сохраняются данные и синхронизируются лайки.
 
-1. Пользователь нажимает кнопку выхода в ProfileFragment
-2. ProfileViewModel вызывает FirebaseAuthManager.signOut()
-3. FirebaseAuthManager выполняет выход из Firebase
-4. Данные пользователя очищаются из SharedPreferences
-5. ProfileViewModel устанавливает isAuthenticated в false и вызывает операцию success
-6. MainViewModel получает событие выхода и запускает переключение на AuthFragment
+### 3.4. Выход из аккаунта
 
-### Удаление аккаунта
+Вызов `AuthViewModel.signOut()` выполняет:
+1. `authManager.signOut()` (Firebase).
+2. Сброс `userId`, `username`, `email`, `permission` в `MySharedPreferences`.
+3. Обнуление LiveData: `isAuthenticated=false`, `displayName=""`, `email=""`, `permission=1`.
 
-1. Пользователь подтверждает удаление аккаунта в ProfileFragment
-2. ProfileViewModel вызывает FirebaseAuthManager.deleteAccount()
-3. FirebaseAuthManager выполняет переаутентификацию (если необходимо) и удаляет аккаунт
-4. Данные пользователя очищаются из SharedPreferences
-5. Процесс завершается аналогично выходу из аккаунта
+## 4. Хранение и валидация данных
 
-## Хранение данных пользователя
+- **`saveUserData`**: сохраняет внутренний `userId`, `username`, `email`, `permission` в `SharedPreferences` и обновляет LiveData.
+- **Валидация**:
+  - `validateEmail(String email)` — обязательный не пустой email, соответствует паттерну.
+  - `validatePassword(String password)` — не менее 6 символов.
+  - `validateName(String name)` — не менее 2 символов.
+  - `validatePasswordConfirmation(String password, String confirmPassword)` — совпадение паролей.
 
-1. **Временные данные сессии**:
-   - Хранятся в ViewModel с использованием LiveData
-   - Включают имя пользователя, email, статус авторизации
+---
 
-2. **Постоянные данные**:
-   - Сохраняются в SharedPreferences через класс MySharedPreferences
-   - Включают userID, имя пользователя, email, уровень доступа
-
-## Безопасность
-
-1. **Токены авторизации**:
-   - Управляются Firebase SDK
-   - Токены хранятся в защищенном хранилище Firebase
-
-2. **Валидация данных**:
-   - Проверка формата email
-   - Проверка сложности пароля (минимум 6 символов)
-   - Проверка соответствия полей при регистрации
-
-3. **Обработка ошибок**:
-   - Отображение информативных сообщений об ошибках
-   - Логирование ошибок для отладки
-
-## Код для реализации авторизации
-
-### Пример авторизации через email/пароль:
-
-```java
-// В AuthViewModel
-public void signInWithEmailPassword(String email, String password) {
-    isLoading.setValue(true);
-    
-    authManager.signInWithEmailPassword(email, password, new FirebaseAuthManager.AuthCallback() {
-        @Override
-        public void onSuccess(FirebaseUser user) {
-            isLoading.postValue(false);
-            isAuthenticated.postValue(true);
-            saveUserData(user);
-        }
-        
-        @Override
-        public void onError(String message) {
-            isLoading.postValue(false);
-            errorMessage.postValue(message);
-        }
-    });
-}
-```
-
-### Пример валидации данных:
-
-```java
-// В AuthViewModel
-public boolean validateEmail(String email) {
-    isEmailValid = !TextUtils.isEmpty(email) && Patterns.EMAIL_ADDRESS.matcher(email).matches();
-    return isEmailValid;
-}
-
-public boolean validatePassword(String password) {
-    isPasswordValid = !TextUtils.isEmpty(password) && password.length() >= 6;
-    return isPasswordValid;
-}
-```
-
-### Пример выхода из аккаунта:
-
-```java
-// В ProfileViewModel
-public void signOut() {
-    try {
-        authManager.signOut();
-        preferences.clear();
-        isAuthenticated.postValue(false);
-        operationSuccess.postValue(true);
-    } catch (Exception e) {
-        errorMessage.postValue("Произошла ошибка при выходе");
-        operationSuccess.postValue(false);
-    }
-}
-```
-
-## Рекомендации по использованию
-
-1. **Для разработчиков**:
-   - Используйте FirebaseAuthManager для всех операций аутентификации
-   - Не дублируйте логику авторизации в разных частях приложения
-   - Проверяйте состояние авторизации при старте приложения через MainViewModel
-
-2. **Для тестирования**:
-   - Создайте тестовых пользователей для отладки
-   - Используйте режим отладки Firebase для мониторинга процессов авторизации
-   - Проверяйте граничные случаи (неверный пароль, несуществующий пользователь, и т.д.) 
+*Эта документация отражает текущее состояние реализации аутентификации в приложении.* 
