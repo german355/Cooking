@@ -220,8 +220,11 @@ public class RecipeDetailViewModel extends AndroidViewModel {
             
             RequestBody body = RequestBody.create(jsonBody, JSON);
             
+            // Формируем URL '/recipes/{id}/like'
+            String url = com.example.cooking.config.ServerConfig.getFullUrl(
+                    com.example.cooking.config.ServerConfig.ENDPOINT_RECIPES + "/" + recipeId + "/like");
             Request request = new Request.Builder()
-                    .url(com.example.cooking.config.ServerConfig.getFullUrl("/like"))
+                    .url(url)
                     .post(body)
                     .build();
             

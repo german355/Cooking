@@ -37,6 +37,6 @@ public interface ApiService {
      * @param userId ID пользователя
      * @return Call объект с ответом типа RecipesResponse
      */
-    @GET("likedrecipes")
+    @GET("recipes/liked")
     Call<RecipesResponse> getLikedRecipes(@Query("userId") String userId);
 } 

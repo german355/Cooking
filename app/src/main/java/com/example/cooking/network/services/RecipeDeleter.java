@@ -17,11 +17,12 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import com.example.cooking.network.services.HttpClientManager;
 
 public class RecipeDeleter {
 
     private static final String TAG = "RecipeDeleter";
-    private static final String DELETE_ENDPOINT = "/deliterecipe";
+    private static final String DELETE_ENDPOINT = "/recipes/delete";
     private final OkHttpClient client;
     private final Context context;
 
@@ -33,9 +34,7 @@ public class RecipeDeleter {
 
 
     public RecipeDeleter(Context context) {
-        client = new OkHttpClient.Builder()
-                .retryOnConnectionFailure(true)
-                .build();
+        client = HttpClientManager.getClient();
         this.context = context;
     }
 
@@ -68,17 +67,12 @@ public class RecipeDeleter {
                 return false;
             }
             try {
-                JSONObject json = new JSONObject();
-                json.put("id", recipeId);
-                json.put("userId", userId);
-                json.put("permission", permission);
-
-                MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
-                RequestBody body = RequestBody.create(json.toString(), JSON_TYPE);
-
+                // Формируем DELETE запрос к /recipes/{id} с заголовками авторизации
                 Request request = new Request.Builder()
-                        .url(ServerConfig.getFullUrl(DELETE_ENDPOINT))
-                        .post(body)
+                        .url(ServerConfig.getFullUrl("/recipes/" + recipeId))
+                        .delete()
+                        .header("X-User-ID", userId)
+                        .header("X-User-Permission", String.valueOf(permission))
                         .build();
 
                 Response response = deleter.client.newCall(request).execute();

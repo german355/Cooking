@@ -19,49 +19,49 @@ import java.util.concurrent.TimeUnit;
 public class HttpClientManager {
     private static final String TAG = "HttpClientManager";
     private static OkHttpClient client = null;
-    
+
     // Увеличенные таймауты для предотвращения преждевременного обрыва соединения
     private static final int CONNECT_TIMEOUT = 30;
     private static final int READ_TIMEOUT = 30;
     private static final int WRITE_TIMEOUT = 30;
-    
+
     /**
      * Получить настроенный OkHttpClient с улучшенной обработкой ошибок
+     * 
      * @return OkHttpClient экземпляр
      */
     public static OkHttpClient getClient() {
         if (client == null) {
             // Создаем перехватчик для логирования
-            HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> 
-                Log.d(TAG, message));
+            HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> Log.d(TAG, message));
             loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
-            
+
             // Создаем перехватчик для повторных попыток при ошибках
             Interceptor retryInterceptor = new Interceptor() {
                 @Override
                 public Response intercept(Chain chain) throws IOException {
                     Request request = chain.request();
-                    
+
                     // Максимальное количество попыток
                     int maxRetries = 3;
                     int retryCount = 0;
                     Response response = null;
-                    
+
                     IOException lastException = null;
                     while (retryCount < maxRetries) {
                         try {
                             if (response != null) {
                                 response.close();
                             }
-                            
+
                             // Пытаемся выполнить запрос
                             response = chain.proceed(request);
-                            
+
                             // Если успешно - возвращаем ответ
                             if (response.isSuccessful()) {
                                 return response;
                             }
-                            
+
                             // Если получили ошибку сервера, закрываем ответ и пробуем еще раз
                             if (response.code() >= 500) {
                                 response.close();
@@ -90,17 +90,17 @@ public class HttpClientManager {
                             }
                         }
                     }
-                    
+
                     // Если все попытки не удались, выбрасываем последнее исключение
                     if (lastException != null) {
                         throw lastException;
                     }
-                    
+
                     // Или возвращаем последний ответ
                     return response;
                 }
             };
-            
+
             // Настраиваем клиент с таймаутами и перехватчиками
             client = new OkHttpClient.Builder()
                     .connectTimeout(CONNECT_TIMEOUT, TimeUnit.SECONDS)
@@ -111,14 +111,18 @@ public class HttpClientManager {
                     .protocols(Collections.singletonList(Protocol.HTTP_1_1))
                     .addInterceptor(loggingInterceptor)
                     .addInterceptor(retryInterceptor)
+                    // Добавляем перехватчик для заголовков авторизации
+                    .addInterceptor(new com.example.cooking.auth.AuthInterceptor())
+                    // Добавляем Authenticator для обновления токенов
+                    .authenticator(new com.example.cooking.auth.TokenAuthenticator())
                     .build();
-            
+
             Log.d(TAG, "Создан HTTP клиент с улучшенной обработкой ошибок, отключенным Keep-Alive и HTTP/1.1");
         }
-        
+
         return client;
     }
-    
+
     /**
      * Сбросить HTTP клиент для повторной инициализации
      */
@@ -126,4 +130,4 @@ public class HttpClientManager {
         client = null;
         Log.d(TAG, "HTTP клиент сброшен");
     }
-} 
+}

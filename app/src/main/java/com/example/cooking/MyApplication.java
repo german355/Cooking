@@ -6,6 +6,7 @@ import android.content.SharedPreferences;
 import com.example.cooking.utils.ThemeUtils;
 import com.example.cooking.ltr.LTRClient;
 import com.example.cooking.ltr.config.LTRServerConfig;
+import com.example.cooking.auth.TokenStorage;
 
 /**
  * Кастомный класс приложения для инициализации глобальных настроек
@@ -14,6 +15,8 @@ public class MyApplication extends Application {
 
     @Override
     public void onCreate() {
+        // Инициализация TokenStorage
+        TokenStorage.init(this);
         super.onCreate();
 
         // Инициализация темы приложения при запуске

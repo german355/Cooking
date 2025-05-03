@@ -231,8 +231,8 @@ public class RecipeRemoteRepository {
             jsonObject.put("userId", recipe.getUserId());
             jsonObject.put("recipeId", recipe.getId());
 
-            // Используем только эндпоинт ENDPOINT_LIKE для любых операций с лайками
-            String url = ServerConfig.getFullUrl(ServerConfig.ENDPOINT_LIKE);
+            // Используем endpoint '/recipes/{id}/like' для операций с лайками
+            String url = ServerConfig.getFullUrl(ServerConfig.ENDPOINT_RECIPES + "/" + recipe.getId() + "/like");
             RequestBody body = RequestBody.create(jsonObject.toString(), JSON);
 
             // Создаем и выполняем запрос
