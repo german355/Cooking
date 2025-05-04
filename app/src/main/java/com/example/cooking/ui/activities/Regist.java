@@ -46,9 +46,6 @@ public class Regist extends AppCompatActivity {
     private Button registerButton;
     private Button googleSignupButton;
     private TextView loginPromptTextView;
-    // Кнопки для повторной отправки и проверки email верификации
-    private Button resendVerificationButton;
-    private Button checkVerificationButton;
     private ProgressBar progressBar;
     
     // Layouts для отображения ошибок
@@ -107,10 +104,6 @@ public class Regist extends AppCompatActivity {
         loginPromptTextView = findViewById(R.id.loginPromptTextView);
         progressBar = findViewById(R.id.progressBar);
         
-        // Инициализация новых кнопок
-        resendVerificationButton = findViewById(R.id.resendVerificationButton);
-        checkVerificationButton = findViewById(R.id.checkVerificationButton);
-        
         if (progressBar == null) {
             Log.w(TAG, "ProgressBar не найден в layout, необходимо добавить его в activity_register.xml");
         }
@@ -146,23 +139,6 @@ public class Regist extends AppCompatActivity {
         viewModel.getIsAuthenticated().observe(this, isAuthenticated -> {
             if (isAuthenticated) {
                 // Переходим на главный экран
-                navigateToMainActivity();
-            }
-        });
-        
-        // Наблюдаем за отправкой письма верификации
-        viewModel.getIsEmailVerificationSent().observe(this, sent -> {
-            if (sent) {
-                Toast.makeText(this, "Письмо подтверждения отправлено, проверьте почту", Toast.LENGTH_LONG).show();
-                resendVerificationButton.setVisibility(View.VISIBLE);
-                checkVerificationButton.setVisibility(View.VISIBLE);
-                registerButton.setVisibility(View.GONE);
-            }
-        });
-        
-        // Наблюдаем за подтверждением email
-        viewModel.getIsEmailVerified().observe(this, verified -> {
-            if (verified) {
                 navigateToMainActivity();
             }
         });
@@ -250,7 +226,7 @@ public class Regist extends AppCompatActivity {
             
             // Проверяем все поля на валидность
             if (validateAllInputs(name, email, password, confirmPassword)) {
-                // Если все поля валидны, вызываем метод регистрации из ViewModel
+                // Сразу регистрируем пользователя без reCAPTCHA
                 viewModel.registerUser(email, password, name);
             }
         });
@@ -273,10 +249,6 @@ public class Regist extends AppCompatActivity {
             startActivity(intent);
             finish();
         });
-        
-        // Обработчики новых кнопок для верификации email
-        resendVerificationButton.setOnClickListener(v -> viewModel.resendEmailVerification());
-        checkVerificationButton.setOnClickListener(v -> viewModel.checkEmailVerification());
     }
     
     /**

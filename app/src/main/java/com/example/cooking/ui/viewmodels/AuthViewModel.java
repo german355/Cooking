@@ -17,7 +17,6 @@ import com.example.cooking.utils.MySharedPreferences;
 import com.example.cooking.data.models.ApiResponse;
 import com.example.cooking.network.services.UserService;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.firebase.auth.ActionCodeSettings;
 
 /**
  * ViewModel для управления аутентификацией пользователя
@@ -34,10 +33,6 @@ public class AuthViewModel extends AndroidViewModel {
     private final MutableLiveData<Boolean> isLoading = new MutableLiveData<>(false);
     private final MutableLiveData<String> errorMessage = new MutableLiveData<>();
     private final MutableLiveData<Boolean> isAuthenticated = new MutableLiveData<>(false);
-
-    // LiveData для статуса отправки и проверки email верификации
-    private final MutableLiveData<Boolean> isEmailVerificationSent = new MutableLiveData<>(false);
-    private final MutableLiveData<Boolean> isEmailVerified = new MutableLiveData<>(false);
 
     // LiveData для данных пользователя
     private final MutableLiveData<String> displayName = new MutableLiveData<>();
@@ -159,12 +154,6 @@ public class AuthViewModel extends AndroidViewModel {
         pendingEmail = email;
         pendingUsername = username;
         pendingPermissionLevel = 1;
-        // Настройка deep link для подтверждения email (замените YOUR_DEEP_LINK_DOMAIN на ваш домен)
-        ActionCodeSettings actionCodeSettings = ActionCodeSettings.newBuilder()
-                .setUrl("https://Cooking.com/verifyEmail")
-                .setHandleCodeInApp(true)
-                .setAndroidPackageName("com.example.cooking", true, null)
-                .build();
         authManager.registerWithEmailAndPassword(email, password, new FirebaseAuthManager.AuthCallback() {
             @Override
             public void onSuccess(FirebaseUser user) {
@@ -189,36 +178,30 @@ public class AuthViewModel extends AndroidViewModel {
                                         }
                                         saveUserData(user, internalUserId, permissionLevel);
                                         Log.d(TAG, "registerUser: Данные пользователя сохранены на сервере, ID: " + internalUserId);
+                                        // Пользователь зарегистрирован и сохранен на сервере, считаем аутентифицированным
+                                        isLoading.postValue(false);
+                                        isAuthenticated.postValue(true);
                                     }
 
                                     @Override
                                     public void onFailure(String error) {
                                         Log.e(TAG, "registerUser: Ошибка сохранения данных пользователя на сервере: " + error);
+                                        // Даже если ошибка на сервере, сохраняем локально и считаем аутентифицированным
                                         saveUserData(user, user.getUid(), pendingPermissionLevel);
+                                        isLoading.postValue(false);
+                                        isAuthenticated.postValue(true);
+                                        errorMessage.postValue("Ошибка синхронизации с сервером: " + error); // Показываем ошибку
                                     }
                                 });
-                        // После обновления профиля отправляем письмо подтверждения
-                        user.sendEmailVerification(actionCodeSettings).addOnCompleteListener(task -> {
-                            isLoading.postValue(false);
-                            if (task.isSuccessful()) {
-                                isEmailVerificationSent.postValue(true);
-                                Log.d(TAG, "Email verification sent");
-                            } else {
-                                String err = task.getException() != null ? task.getException().getMessage() :
-                                        "Ошибка отправки письма подтверждения";
-                                errorMessage.postValue(err);
-                                Log.e(TAG, "Error sending email verification: " + err);
-                            }
-                        });
                     }
 
                     @Override
                     public void onError(String message) {
                         Log.e(TAG, "registerUser: Ошибка обновления имени пользователя: " + message);
-                        // Сохраняем Firebase UID и права по умолчанию (1)
-                        saveUserData(user, user.getUid(), 1);
+                        // Ошибка обновления профиля Firebase
                         isLoading.postValue(false);
-                        isAuthenticated.postValue(true);
+                        errorMessage.postValue("Ошибка обновления профиля: " + message);
+                        // Не считаем аутентифицированным, т.к. профиль не обновился
                     }
                 });
             }
@@ -534,73 +517,4 @@ public class AuthViewModel extends AndroidViewModel {
             isLoading.setValue(false);
         }
     }
-
-    /**
-     * Повторно отправляет письмо подтверждения email текущему пользователю
-     */
-    public void resendEmailVerification() {
-        FirebaseUser user = authManager.getCurrentUser();
-        if (user == null) {
-            errorMessage.postValue("Пользователь не найден");
-            return;
-        }
-        isLoading.setValue(true);
-        user.sendEmailVerification().addOnCompleteListener(task -> {
-            isLoading.postValue(false);
-            if (task.isSuccessful()) {
-                errorMessage.postValue("Письмо подтверждения отправлено повторно");
-            } else {
-                String err = task.getException() != null ? task.getException().getMessage() :
-                        "Ошибка при повторной отправке письма подтверждения";
-                errorMessage.postValue(err);
-            }
-        });
-    }
-
-    /**
-     * Проверяет статус верификации email текущего пользователя
-     */
-    public void checkEmailVerification() {
-        FirebaseUser user = authManager.getCurrentUser();
-        if (user == null) {
-            errorMessage.postValue("Пользователь не найден");
-            return;
-        }
-        isLoading.setValue(true);
-        user.reload().addOnCompleteListener(task -> {
-            isLoading.postValue(false);
-            if (user.isEmailVerified()) {
-                isEmailVerified.postValue(true);
-                // Сохраняем данные пользователя на сервере после подтверждения
-                userService.saveUser(user.getUid(), pendingUsername, pendingEmail, pendingPermissionLevel,
-                        new UserService.UserServiceCallback() {
-                            @Override
-                            public void onSuccess(ApiResponse response) {
-                                String internalUserId = response.getUserId();
-                                int permissionLevel = response.getPermission();
-                                if (internalUserId == null || internalUserId.isEmpty()) {
-                                    internalUserId = user.getUid();
-                                }
-                                if (permissionLevel == 0) permissionLevel = pendingPermissionLevel;
-                                saveUserData(user, internalUserId, permissionLevel);
-                                isAuthenticated.postValue(true);
-                                Log.d(TAG, "checkEmailVerification: Email verified and user saved with ID: " + internalUserId);
-                            }
-
-                            @Override
-                            public void onFailure(String error) {
-                                Log.e(TAG, "checkEmailVerification: Error saving user on server: " + error);
-                                saveUserData(user, user.getUid(), pendingPermissionLevel);
-                                isAuthenticated.postValue(true);
-                            }
-                        });
-            } else {
-                errorMessage.postValue("Email ещё не подтверждён");
-            }
-        });
-    }
-
-    // Геттеры новых LiveData
-    public LiveData<Boolean> getIsEmailVerificationSent() { return isEmailVerificationSent; }
-    public LiveData<Boolean> getIsEmailVerified() { return isEmailVerified; }
 }

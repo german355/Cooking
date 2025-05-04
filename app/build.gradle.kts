@@ -78,5 +78,4 @@ dependencies {
     // implementation("androidx.navigation:navigation-ui-ktx:$nav_version") // Используем ktx для Kotlin - ЗАМЕНЯЕТСЯ
     implementation("androidx.navigation:navigation-fragment:$nav_version") // Java версия
     implementation("androidx.navigation:navigation-ui:$nav_version") // Java версия
-
 }

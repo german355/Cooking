@@ -51,21 +51,6 @@
             android:name=".ui.activities.EditRecipeActivity"
             android:exported="false"
             android:parentActivityName=".ui.activities.RecipeDetailActivity" />
-        <!-- Activity для обработки deep link подтверждения email -->
-        <activity
-            android:name=".ui.activities.EmailVerificationActivity"
-            android:exported="true">
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <!-- Замените host и pathPrefix на ваш домен и путь -->
-                <data
-                    android:scheme="https"
-                    android:host="Cooking.com"
-                    android:pathPrefix="/verifyEmail" />
-            </intent-filter>
-        </activity>
     </application>
 
 </manifest>

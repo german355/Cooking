@@ -60,6 +60,8 @@ public class FirebaseAuthManager {
      */
     public FirebaseAuthManager() {
         firebaseAuth = FirebaseAuth.getInstance();
+        // Отключаю проверку reCAPTCHA для тестирования
+        firebaseAuth.getFirebaseAuthSettings().setAppVerificationDisabledForTesting(true);
         // Устанавливаем язык X-Firebase-Locale в формате ISO 639
         firebaseAuth.setLanguageCode(Locale.getDefault().getLanguage());
     }
