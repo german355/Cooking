@@ -10,12 +10,14 @@ import retrofit2.converter.gson.GsonConverterFactory;
  * Класс для настройки Retrofit клиента
  */
 public class RetrofitClient {
-    private static final String BASE_URL = "http://r1.veroid.network:10009/";
+    private static final String BASE_URL = "http://89.35.130.107";
     private static final String TAG = "RetrofitClient";
     private static Retrofit retrofit = null;
+    private static Retrofit ltrRetrofit = null;
 
     /**
      * Получить настроенный Retrofit клиент
+     * 
      * @return Retrofit экземпляр
      */
     public static Retrofit getClient() {
@@ -23,9 +25,15 @@ public class RetrofitClient {
             // Используем HttpClientManager для создания OkHttpClient с обработкой ошибок
             OkHttpClient client = HttpClientManager.getClient();
 
+            // Проверяем, что URL заканчивается на слеш
+            String baseUrl = BASE_URL;
+            if (!baseUrl.endsWith("/")) {
+                baseUrl += "/";
+            }
+
             // Создаем Retrofit с настроенным клиентом
             retrofit = new Retrofit.Builder()
-                    .baseUrl(BASE_URL)
+                    .baseUrl(baseUrl)
                     .client(client)
                     .addConverterFactory(GsonConverterFactory.create())
                     .build();
@@ -36,7 +44,34 @@ public class RetrofitClient {
     }
 
     /**
+     * Получить Retrofit клиент для LTR API
+     * 
+     * @param baseUrl Базовый URL для LTR API
+     * @return Retrofit экземпляр для LTR API
+     */
+    public static Retrofit getLtrClient(String baseUrl) {
+        // Проверяем, что URL заканчивается на слеш
+        if (!baseUrl.endsWith("/")) {
+            baseUrl += "/";
+        }
+
+        // Используем HttpClientManager для создания OkHttpClient с обработкой ошибок
+        OkHttpClient client = HttpClientManager.getClient();
+
+        // Создаем новый Retrofit для LTR API
+        ltrRetrofit = new Retrofit.Builder()
+                .baseUrl(baseUrl)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+
+        Log.d(TAG, "Создан Retrofit клиент для LTR API с URL: " + baseUrl);
+        return ltrRetrofit;
+    }
+
+    /**
      * Получить API сервис
+     * 
      * @return ApiService экземпляр
      */
     public static ApiService getApiService() {
@@ -49,6 +84,7 @@ public class RetrofitClient {
      */
     public static void resetClient() {
         retrofit = null;
-        Log.d(TAG, "Retrofit клиент сброшен");
+        ltrRetrofit = null;
+        Log.d(TAG, "Retrofit клиенты сброшены");
     }
 }

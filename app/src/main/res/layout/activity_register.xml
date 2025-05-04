@@ -147,6 +147,34 @@
             app:layout_constraintRight_toRightOf="parent"
             app:layout_constraintTop_toBottomOf="@id/googleSignupButton" />
 
+        <!-- Кнопка для повторной отправки письма подтверждения -->
+        <Button
+            android:id="@+id/resendVerificationButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Отправить письмо повторно"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/loginPromptTextView" />
+
+        <!-- Кнопка для проверки статуса верификации -->
+        <Button
+            android:id="@+id/checkVerificationButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Проверить верификацию"
+            android:textSize="14sp"
+            android:padding="12dp"
+            android:visibility="gone"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/resendVerificationButton" />
+
         <ProgressBar
             android:id="@+id/progressBar"
             android:layout_width="wrap_content"

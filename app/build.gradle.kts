@@ -67,6 +67,10 @@ dependencies {
     annotationProcessor("androidx.room:room-compiler:2.6.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel:2.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata:2.6.2")
+    implementation("androidx.security:security-crypto:1.0.0")
+
+    // WorkManager для фоновой синхронизации в LTR-клиенте
+    implementation("androidx.work:work-runtime:2.9.0")
 
     // Зависимости Navigation Component
     val nav_version = "2.7.7"
@@ -74,5 +78,4 @@ dependencies {
     // implementation("androidx.navigation:navigation-ui-ktx:$nav_version") // Используем ktx для Kotlin - ЗАМЕНЯЕТСЯ
     implementation("androidx.navigation:navigation-fragment:$nav_version") // Java версия
     implementation("androidx.navigation:navigation-ui:$nav_version") // Java версия
-
 }

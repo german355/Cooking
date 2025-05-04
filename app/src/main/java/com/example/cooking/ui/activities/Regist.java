@@ -226,7 +226,7 @@ public class Regist extends AppCompatActivity {
             
             // Проверяем все поля на валидность
             if (validateAllInputs(name, email, password, confirmPassword)) {
-                // Если все поля валидны, вызываем метод регистрации из ViewModel
+                // Сразу регистрируем пользователя без reCAPTCHA
                 viewModel.registerUser(email, password, name);
             }
         });

@@ -27,6 +27,7 @@ import retrofit2.Callback;
 import retrofit2.Response;
 import retrofit2.Retrofit;
 import retrofit2.converter.gson.GsonConverterFactory;
+import androidx.annotation.NonNull;
 
 /**
  * Менеджер для работы с API рецептов через Retrofit
@@ -34,7 +35,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
  */
 public class RecipeManager {
     private static final String TAG = "RecipeManager";
-    private static final String API_URL = "http://r1.veroid.network:10009";
+    private static final String API_URL = "http://89.35.130.107";
     
     // Увеличенные таймауты для стабильности
     private static final int CONNECT_TIMEOUT = 30; // 30 секунд
@@ -98,19 +99,22 @@ public class RecipeManager {
      * @param ingredients Список ингредиентов
      * @param steps Список шагов
      * @param userId ID пользователя
-     * @param recipeId ID рецепта (null для нового рецепта)
      * @param imageBytes Изображение рецепта (может быть null)
      * @param callback Обратный вызов результата
      */
     public void saveRecipe(String title, List<Ingredient> ingredients, List<Step> steps,
-                          String userId, Integer recipeId, byte[] imageBytes,
+                          String userId, byte[] imageBytes,
                           RecipeSaveCallback callback) {
         
+
+
         // Проверяем наличие интернет-соединения
         if (!isNetworkAvailable()) {
+            Log.w(TAG, "RecipeManager.saveRecipe: Сеть недоступна (проверка внутри менеджера)");
             callback.onFailure("Отсутствует подключение к интернету. Пожалуйста, проверьте подключение и попробуйте снова.");
             return;
         }
+        Log.d(TAG, "RecipeManager.saveRecipe: Сеть доступна (проверка внутри менеджера)");
         
         // Сериализуем списки в JSON
         String ingredientsJson = gson.toJson(ingredients);
@@ -121,7 +125,6 @@ public class RecipeManager {
                 ", ingredients: " + ingredientsJson +
                 ", steps: " + stepsJson +
                 ", userId: " + userId +
-                ", recipeId: " + (recipeId != null ? recipeId : "новый рецепт") +
                 ", imageBytes: " + (imageBytes != null ? imageBytes.length + " байт" : "нет"));
         
         try {
@@ -130,10 +133,6 @@ public class RecipeManager {
             RequestBody ingredientsBody = RequestBody.create(ingredientsJson, MediaType.parse("application/json"));
             RequestBody stepsBody = RequestBody.create(stepsJson, MediaType.parse("application/json"));
             RequestBody userIdBody = RequestBody.create(userId, MediaType.parse("text/plain"));
-            RequestBody recipeIdBody = RequestBody.create(
-                    recipeId != null ? recipeId.toString() : "", 
-                    MediaType.parse("text/plain")
-            );
             
             Call<ResponseBody> call;
             
@@ -143,32 +142,18 @@ public class RecipeManager {
                 RequestBody requestFile = RequestBody.create(imageBytes, MediaType.parse("image/jpeg"));
                 MultipartBody.Part photoPart = MultipartBody.Part.createFormData("photo", fileName, requestFile);
                 
-                call = apiService.addOrUpdateRecipe(
-                        titleBody, ingredientsBody, stepsBody, userIdBody, recipeIdBody, photoPart
+                call = apiService.addRecipe(
+                        titleBody, ingredientsBody, stepsBody, userIdBody, photoPart
                 );
+                Log.d(TAG, "RecipeManager.saveRecipe: Отправка запроса в API...");
                 Log.d(TAG, "Отправка запроса с изображением (размер: " + imageBytes.length + " байт)");
             } else {
                 // Без изображения
-                // Для редактирования рецепта (с существующим ID) и без новой картинки
-                // важно не отправлять пустую часть 'photo', чтобы сервер сохранил существующее изображение
-                if (recipeId != null) {
-                    Log.d(TAG, "Редактирование рецепта без изменения изображения");
-                    // Создаем пустую фотографию размером 1px
-                    MultipartBody.Part photoPart = MultipartBody.Part.createFormData(
-                            "photo", 
-                            "", 
-                            RequestBody.create(new byte[0], MediaType.parse("image/jpeg"))
-                    );
-                    call = apiService.addOrUpdateRecipe(
-                            titleBody, ingredientsBody, stepsBody, userIdBody, recipeIdBody, photoPart
-                    );
-                } else {
-                    // Для нового рецепта без картинки используем метод без фото
-                    Log.d(TAG, "Создание нового рецепта без изображения");
-                    call = apiService.addOrUpdateRecipeWithoutPhoto(
-                            titleBody, ingredientsBody, stepsBody, userIdBody, recipeIdBody
-                    );
-                }
+                // Для нового рецепта без картинки используем метод без фото
+                Log.d(TAG, "Создание нового рецепта без изображения");
+                call = apiService.addRecipeWithoutPhoto(
+                        titleBody, ingredientsBody, stepsBody, userIdBody
+                );
             }
             
             // Выполняем запрос с поддержкой повторных попыток
@@ -177,6 +162,69 @@ public class RecipeManager {
         } catch (Exception e) {
             // Обрабатываем любые исключения при подготовке запроса
             Log.e(TAG, "Ошибка при подготовке запроса", e);
+            callback.onFailure("Ошибка при подготовке запроса: " + e.getMessage());
+        }
+    }
+
+    public void updateRecipe(String title, List<Ingredient> ingredients, List<Step> steps,
+                             String userId, @NonNull Integer recipeId, byte[] imageBytes,
+                             int permission, RecipeSaveCallback callback) {
+
+        Log.d(TAG, "RecipeManager.updateRecipe: Метод вызван. Recipe ID: " + recipeId + ", Permission: " + permission + ", User ID: " + userId);
+
+        if (!isNetworkAvailable()) {
+            Log.w(TAG, "RecipeManager.updateRecipe: Сеть недоступна");
+            callback.onFailure("Отсутствует подключение к интернету. Пожалуйста, проверьте подключение и попробуйте снова.");
+            return;
+        }
+        Log.d(TAG, "RecipeManager.updateRecipe: Сеть доступна");
+
+        String ingredientsJson = gson.toJson(ingredients);
+        String stepsJson = gson.toJson(steps);
+
+        Log.d(TAG, "Обновление рецепта:" +
+                " title: " + title +
+                ", ingredients: " + ingredientsJson +
+                ", steps: " + stepsJson +
+                ", userId: " + userId +
+                ", recipeId: " + recipeId +
+                ", permission: " + permission +
+                ", imageBytes: " + (imageBytes != null ? imageBytes.length + " байт" : "нет"));
+
+        try {
+            RequestBody titleBody = RequestBody.create(title, MediaType.parse("text/plain"));
+            RequestBody ingredientsBody = RequestBody.create(ingredientsJson, MediaType.parse("application/json"));
+            RequestBody stepsBody = RequestBody.create(stepsJson, MediaType.parse("application/json"));
+
+            MultipartBody.Part photoPart;
+            if (imageBytes != null && imageBytes.length > 0) {
+                String fileName = "recipe_" + System.currentTimeMillis() + ".jpg";
+                RequestBody requestFile = RequestBody.create(imageBytes, MediaType.parse("image/jpeg"));
+                photoPart = MultipartBody.Part.createFormData("photo", fileName, requestFile);
+                Log.d(TAG, "RecipeManager.updateRecipe: Подготовка запроса API (с новым фото)...");
+            } else {
+                photoPart = MultipartBody.Part.createFormData("photo", "", RequestBody.create(new byte[0], MediaType.parse("image/jpeg")));
+                Log.d(TAG, "RecipeManager.updateRecipe: Подготовка запроса API (без нового фото)...");
+            }
+
+            String userIdHeader = String.valueOf(userId);
+            String permissionHeader = String.valueOf(permission);
+
+            Log.d(TAG, "RecipeManager.updateRecipe: Вызов apiService.updateRecipe (с заголовками)...");
+            Call<ResponseBody> call = apiService.updateRecipe(
+                    recipeId,         // ID в Path
+                    userIdHeader,     // User ID в заголовке
+                    permissionHeader, // Permission в заголовке
+                    titleBody,        // Данные в теле
+                    ingredientsBody,  // Данные в теле
+                    stepsBody,        // Данные в теле
+                    photoPart         // Фото (новое или пустое) в теле
+            );
+
+            executeWithRetry(call, callback, 0);
+
+        } catch (Exception e) {
+            Log.e(TAG, "Ошибка при подготовке запроса на обновление", e);
             callback.onFailure("Ошибка при подготовке запроса: " + e.getMessage());
         }
     }

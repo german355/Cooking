@@ -229,8 +229,12 @@ public class EditRecipeActivity extends AppCompatActivity {
         textImage.setOnClickListener(v -> checkStoragePermissionAndPickImage());
 
         saveButton.setOnClickListener(v -> {
+            Log.d(TAG, "Нажата кнопка сохранения");
             if (validateInput()) {
+                Log.d(TAG, "Валидация пройдена, вызываем viewModel.saveRecipe()");
                 viewModel.saveRecipe();
+            } else {
+                 Log.w(TAG, "Валидация не пройдена");
             }
         });
         

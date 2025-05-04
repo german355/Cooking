@@ -45,6 +45,11 @@ public class AuthViewModel extends AndroidViewModel {
     private boolean isNameValid = false;
     private boolean isPasswordConfirmValid = false;
 
+    // Временные данные регистрации
+    private String pendingUsername;
+    private String pendingEmail;
+    private int pendingPermissionLevel = 1;
+
     public AuthViewModel(@NonNull Application application) {
         super(application);
         authManager = new FirebaseAuthManager(application);
@@ -145,6 +150,10 @@ public class AuthViewModel extends AndroidViewModel {
 
         isLoading.setValue(true);
 
+        // Сохраняем временные данные для последующей проверки и сохранения
+        pendingEmail = email;
+        pendingUsername = username;
+        pendingPermissionLevel = 1;
         authManager.registerWithEmailAndPassword(email, password, new FirebaseAuthManager.AuthCallback() {
             @Override
             public void onSuccess(FirebaseUser user) {
@@ -153,47 +162,46 @@ public class AuthViewModel extends AndroidViewModel {
                     @Override
                     public void onSuccess() {
                         // Сохраняем данные пользователя на сервере
-                        userService.saveUser(user.getUid(), username, email, 1, new UserService.UserServiceCallback() {
-                            @Override
-                            public void onSuccess(ApiResponse response) {
-                                // Получаем внутренний ID и права из ответа сервера
-                                String internalUserId = response.getUserId();
-                                int permissionLevel = response.getPermission(); // Получаем permission
-                                if (internalUserId == null || internalUserId.isEmpty()) {
-                                    Log.e(TAG,
-                                            "Внутренний userId не пришел от сервера при регистрации! Сохраняем Firebase UID.");
-                                    internalUserId = user.getUid(); // Запасной вариант
-                                }
-                                if (permissionLevel == 0) { // Если сервер не вернул или вернул 0
-                                    Log.w(TAG, "Уровень прав не пришел от сервера при регистрации. Установлен 1.");
-                                    permissionLevel = 1; // Значение по умолчанию
-                                }
-                                // Вызываем saveUserData с внутренним ID и правами
-                                saveUserData(user, internalUserId, permissionLevel);
-                                isLoading.postValue(false);
-                                isAuthenticated.postValue(true);
-                                Log.d(TAG, "registerUser: Пользователь зарегистрирован, ID: " + internalUserId
-                                        + ", Права: " + permissionLevel);
-                            }
+                        userService.saveUser(user.getUid(), username, pendingEmail, pendingPermissionLevel,
+                                new UserService.UserServiceCallback() {
+                                    @Override
+                                    public void onSuccess(ApiResponse response) {
+                                        String internalUserId = response.getUserId();
+                                        int permissionLevel = response.getPermission();
+                                        if (internalUserId == null || internalUserId.isEmpty()) {
+                                            Log.e(TAG, "registerUser: Внутренний userId не пришел от сервера при регистрации! Сохраняем Firebase UID.");
+                                            internalUserId = user.getUid();
+                                        }
+                                        if (permissionLevel == 0) {
+                                            Log.w(TAG, "registerUser: Уровень прав не пришел от сервера при регистрации. Установлен " + pendingPermissionLevel);
+                                            permissionLevel = pendingPermissionLevel;
+                                        }
+                                        saveUserData(user, internalUserId, permissionLevel);
+                                        Log.d(TAG, "registerUser: Данные пользователя сохранены на сервере, ID: " + internalUserId);
+                                        // Пользователь зарегистрирован и сохранен на сервере, считаем аутентифицированным
+                                        isLoading.postValue(false);
+                                        isAuthenticated.postValue(true);
+                                    }
 
-                            @Override
-                            public void onFailure(String error) {
-                                Log.e(TAG, "registerUser: Ошибка сохранения данных пользователя на сервере: " + error);
-                                // Сохраняем Firebase UID и права по умолчанию (1) при ошибке сервера
-                                saveUserData(user, user.getUid(), 1);
-                                isLoading.postValue(false);
-                                isAuthenticated.postValue(true);
-                            }
-                        });
+                                    @Override
+                                    public void onFailure(String error) {
+                                        Log.e(TAG, "registerUser: Ошибка сохранения данных пользователя на сервере: " + error);
+                                        // Даже если ошибка на сервере, сохраняем локально и считаем аутентифицированным
+                                        saveUserData(user, user.getUid(), pendingPermissionLevel);
+                                        isLoading.postValue(false);
+                                        isAuthenticated.postValue(true);
+                                        errorMessage.postValue("Ошибка синхронизации с сервером: " + error); // Показываем ошибку
+                                    }
+                                });
                     }
 
                     @Override
                     public void onError(String message) {
                         Log.e(TAG, "registerUser: Ошибка обновления имени пользователя: " + message);
-                        // Сохраняем Firebase UID и права по умолчанию (1)
-                        saveUserData(user, user.getUid(), 1);
+                        // Ошибка обновления профиля Firebase
                         isLoading.postValue(false);
-                        isAuthenticated.postValue(true);
+                        errorMessage.postValue("Ошибка обновления профиля: " + message);
+                        // Не считаем аутентифицированным, т.к. профиль не обновился
                     }
                 });
             }

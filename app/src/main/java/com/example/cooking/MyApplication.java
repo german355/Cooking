@@ -4,6 +4,9 @@ import android.app.Application;
 import androidx.preference.PreferenceManager;
 import android.content.SharedPreferences;
 import com.example.cooking.utils.ThemeUtils;
+import com.example.cooking.ltr.LTRClient;
+import com.example.cooking.ltr.config.LTRServerConfig;
+import com.example.cooking.auth.TokenStorage;
 
 /**
  * Кастомный класс приложения для инициализации глобальных настроек
@@ -12,10 +15,15 @@ public class MyApplication extends Application {
 
     @Override
     public void onCreate() {
+        // Инициализация TokenStorage
+        TokenStorage.init(this);
         super.onCreate();
 
         // Инициализация темы приложения при запуске
         initializeTheme();
+
+        // Инициализация LTR клиента
+        initializeLTRClient();
     }
 
     /**
@@ -30,5 +38,17 @@ public class MyApplication extends Application {
 
         // Применяем сохраненную тему
         ThemeUtils.applyTheme(themeValue);
+    }
+
+    /**
+     * Инициализирует клиент для Learning to Rank
+     */
+    private void initializeLTRClient() {
+        // Инициализация LTR клиента с использованием настроек из конфигурации
+        LTRClient.getInstance(this)
+                .setServerUrl(LTRServerConfig.BASE_URL)
+                .setApiKey(LTRServerConfig.API_KEY)
+                .enablePersonalization(true)
+                .initialize();
     }
 }

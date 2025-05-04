@@ -126,7 +126,7 @@ public class HomeViewModel extends AndroidViewModel {
             @Override
             public void onRecipesLoaded(List<Recipe> remoteRecipes) {
                  Log.d(TAG, "Recipes loaded from remote: " + (remoteRecipes != null ? remoteRecipes.size() : 0));
-                // Сохраняем/Обновляем рецепты в локальном хранилище
+                // Сохраняем или обновляем рецепты в локальном хранилище
                 executeIfActive(() -> {
                     try {
                         if (remoteRecipes != null) {

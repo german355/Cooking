@@ -21,7 +21,7 @@ public interface ApiService {
      * @param request запрос с данными регистрации
      * @return ответ сервера
      */
-    @POST("register")
+    @POST("auth/register")
     Call<ApiResponse> registerUser(@Body UserRegisterRequest request);
     
     /**
@@ -29,7 +29,7 @@ public interface ApiService {
      * @param request запрос с данными для входа
      * @return ответ сервера
      */
-    @POST("login")
+    @POST("auth/login")
     Call<ApiResponse> loginUser(@Body UserLoginRequest request);
 
     /**
@@ -37,6 +37,6 @@ public interface ApiService {
      * @param userId ID пользователя
      * @return Call объект с ответом типа RecipesResponse
      */
-    @GET("likedrecipes")
+    @GET("recipes/liked")
     Call<RecipesResponse> getLikedRecipes(@Query("userId") String userId);
 } 

@@ -274,14 +274,19 @@ public class EditRecipeViewModel extends AndroidViewModel {
      * Сохраняет (обновляет) рецепт
      */
     public void saveRecipe() {
-        if (!validateAll()) { // Проверяем валидность перед сохранением
+        Log.d(TAG, "saveRecipe: Метод вызван");
+        if (!validateAll()) {
+            Log.w(TAG, "saveRecipe: Валидация ВСЕХ полей не пройдена");
             return;
         }
+        Log.d(TAG, "saveRecipe: Валидация ВСЕХ полей пройдена");
 
         if (!isNetworkAvailable()) {
+            Log.w(TAG, "saveRecipe: Сеть недоступна");
             errorMessage.setValue("Нет подключения к интернету для сохранения рецепта.");
             return;
         }
+        Log.d(TAG, "saveRecipe: Сеть доступна");
 
         isSaving.setValue(true);
         errorMessage.setValue(null);
@@ -299,15 +304,17 @@ public class EditRecipeViewModel extends AndroidViewModel {
             isSaving.setValue(false);
             return;
         }
-
+        Log.d(TAG, "saveRecipe: ID рецепта = " + currentRecipeId);
+        Log.d(TAG, String.valueOf(permission));
+        Log.d(TAG, userId);
+        Log.d(TAG, "saveRecipe: Вызов recipeManager.updateRecipe...");
         recipeManager.updateRecipe(
-            currentRecipeId,
             currentTitle,
             currentIngredients,
             currentSteps,
-            // Передаем байты только если изображение было изменено
-            imageChanged ? currentImageBytes : null, 
             userId,
+            currentRecipeId,
+            imageChanged ? currentImageBytes : null,
             permission,
             new RecipeManager.RecipeSaveCallback() {
                 @Override

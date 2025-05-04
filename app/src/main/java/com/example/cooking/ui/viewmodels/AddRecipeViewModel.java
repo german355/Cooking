@@ -112,7 +112,6 @@ public class AddRecipeViewModel extends AndroidViewModel {
             currentIngredients, // Передаем список напрямую
             currentSteps, // Передаем список напрямую
             userId,
-            null, // recipeId - предполагаем, что это всегда новый рецепт в AddRecipeActivity
             imageBytes,
             new RecipeManager.RecipeSaveCallback() {
                 @Override

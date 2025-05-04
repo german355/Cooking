@@ -40,6 +40,7 @@ public class LikedRecipesRepository {
 
     public interface LikedRecipesCallback {
         void onRecipesLoaded(List<Recipe> recipes);
+
         void onDataNotAvailable(String error);
     }
 
@@ -58,14 +59,21 @@ public class LikedRecipesRepository {
 
     /**
      * Получить LiveData ПОЛНЫХ лайкнутых рецептов из локальной базы данных (Room).
-     * Загружает ID лайков, затем по этим ID получает полные данные из RecipeLocalRepository.
+     * Загружает ID лайков, затем по этим ID получает полные данные из
+     * RecipeLocalRepository.
      * Это основной метод для получения данных в UI.
      */
     public LiveData<List<Recipe>> getLikedRecipes(String userId) {
-        syncLikedRecipesFromServerIfNeeded(userId); // Запускаем фоновую синхронизацию лайков
+        // Проверяем чтение internalUserId из SharedPreferences
+        com.example.cooking.utils.MySharedPreferences prefs = new com.example.cooking.utils.MySharedPreferences(
+                context);
+        String internalUserId = prefs.getString("userId", "0");
+        Log.d(TAG, "getLikedRecipes: parameter userId=" + userId + ", SharedPreferences userId=" + internalUserId);
+        syncLikedRecipesFromServerIfNeeded(internalUserId); // Запускаем фоновую синхронизацию лайков
 
-        // Получаем LiveData списка ID лайкнутых рецептов (LikedRecipeEntity)
-        LiveData<List<LikedRecipeEntity>> likedEntitiesLiveData = likedRecipeDao.getLikedRecipesForUser(userId);
+        // Получаем LiveData списка ID лайкнутых рецептов (LikedRecipeEntity) для
+        // internalUserId
+        LiveData<List<LikedRecipeEntity>> likedEntitiesLiveData = likedRecipeDao.getLikedRecipesForUser(internalUserId);
 
         // Используем Transformations.switchMap для загрузки полных данных по ID
         return Transformations.switchMap(likedEntitiesLiveData, entities -> {
@@ -96,13 +104,15 @@ public class LikedRecipesRepository {
                             fullRecipe.setLiked(true);
                             likedFullRecipes.add(fullRecipe);
                         } else {
-                            // Если полного рецепта нет в локальной базе (маловероятно при правильной синхронизации)
+                            // Если полного рецепта нет в локальной базе (маловероятно при правильной
+                            // синхронизации)
                             // Можно добавить заглушку или пропустить
-                             Log.w(TAG, "Полный рецепт для liked recipeId " + entity.getRecipeId() + " не найден в RecipeLocalRepository");
+                            Log.w(TAG, "Полный рецепт для liked recipeId " + entity.getRecipeId()
+                                    + " не найден в RecipeLocalRepository");
                         }
                     }
                 }
-                 // Сортируем по ID или дате, если нужно
+                // Сортируем по ID или дате, если нужно
                 // Collections.sort(likedFullRecipes, ...);
                 fullRecipesLiveData.setValue(likedFullRecipes);
                 Log.d(TAG, "Сформирован полный список лайкнутых рецептов: " + likedFullRecipes.size());
@@ -118,8 +128,8 @@ public class LikedRecipesRepository {
      */
     public void syncLikedRecipesFromServerIfNeeded(final String userId) {
         if (userId == null || userId.equals("0") || userId.isEmpty()) {
-             Log.w(TAG, "Пропуск синхронизации лайков: неверный userId=" + userId);
-             return;
+            Log.w(TAG, "Пропуск синхронизации лайков: неверный userId=" + userId);
+            return;
         }
         if (!isNetworkAvailable()) {
             Log.d(TAG, "Нет сети, синхронизация лайкнутых рецептов не выполняется.");
@@ -134,42 +144,47 @@ public class LikedRecipesRepository {
      * Исправлено: использует общий apiService и обрабатывает RecipesResponse.
      */
     private void fetchAndStoreLikedRecipes(String userId) {
-         Log.d(TAG, "[fetchAndStore] Выполнение запроса к apiService.getLikedRecipes для userId: " + userId);
-         // Используем общий ApiService
-         retrofit2.Call<RecipesResponse> call = apiService.getLikedRecipes(userId);
-         try {
-             // Используем execute() для синхронного выполнения в фоновом потоке Executor'a
-             retrofit2.Response<RecipesResponse> response = call.execute();
-             Log.d(TAG, "[fetchAndStore] Получен ответ от сервера: Code=" + response.code() + ", isSuccessful=" + response.isSuccessful());
+        Log.d(TAG, "[fetchAndStore] Выполнение запроса к apiService.getLikedRecipes для userId: " + userId);
+        // Используем общий ApiService
+        retrofit2.Call<RecipesResponse> call = apiService.getLikedRecipes(userId);
+        try {
+            // Используем execute() для синхронного выполнения в фоновом потоке Executor'a
+            retrofit2.Response<RecipesResponse> response = call.execute();
+            Log.d(TAG, "[fetchAndStore] Получен ответ от сервера: Code=" + response.code() + ", isSuccessful="
+                    + response.isSuccessful());
 
-             if (response.isSuccessful() && response.body() != null) {
-                 RecipesResponse recipesResponse = response.body();
-                 if (recipesResponse.isSuccess()){
+            if (response.isSuccessful() && response.body() != null) {
+                RecipesResponse recipesResponse = response.body();
+                if (recipesResponse.isSuccess()) {
                     List<Recipe> recipes = recipesResponse.getRecipes();
                     if (recipes != null) {
-                        Log.i(TAG, "[fetchAndStore] Успешно загружено " + recipes.size() + " лайкнутых рецептов с сервера для userId: " + userId);
+                        Log.i(TAG, "[fetchAndStore] Успешно загружено " + recipes.size()
+                                + " лайкнутых рецептов с сервера для userId: " + userId);
                         // Конвертируем и сохраняем
                         storeServerLikedRecipes(userId, recipes);
                     } else {
-                        Log.w(TAG, "[fetchAndStore] Сервер вернул success=true, но null список лайкнутых рецептов для userId: " + userId);
+                        Log.w(TAG,
+                                "[fetchAndStore] Сервер вернул success=true, но null список лайкнутых рецептов для userId: "
+                                        + userId);
                         // Очищаем локальные лайки, раз сервер говорит, что их нет
                         storeServerLikedRecipes(userId, new ArrayList<>());
                     }
                 } else {
-                     // Сервер вернул success=false
-                     Log.e(TAG, "[fetchAndStore] Ошибка при синхронизации лайкнутых рецептов (success=false): " +
-                             "Code: " + response.code() + ", Message: " + recipesResponse.getMessage());
+                    // Сервер вернул success=false
+                    Log.e(TAG, "[fetchAndStore] Ошибка при синхронизации лайкнутых рецептов (success=false): " +
+                            "Code: " + response.code() + ", Message: " + recipesResponse.getMessage());
                 }
-             } else {
-                 // Неуспешный HTTP ответ
-                 Log.e(TAG, "[fetchAndStore] Ошибка при синхронизации лайкнутых рецептов (HTTP неудача): " +
-                         "Code: " + response.code() + ", Message: " + response.message()); // Логируем код и стандартное сообщение
-             }
-         } catch (Exception e) {
-             // Исключение при выполнении запроса или обработке ответа
-             Log.e(TAG, "[fetchAndStore] Исключение при синхронизации лайкнутых рецептов для userId: " + userId,
-                     e); // Логируем полный стектрейс
-         }
+            } else {
+                // Неуспешный HTTP ответ
+                Log.e(TAG, "[fetchAndStore] Ошибка при синхронизации лайкнутых рецептов (HTTP неудача): " +
+                        "Code: " + response.code() + ", Message: " + response.message()); // Логируем код и стандартное
+                                                                                          // сообщение
+            }
+        } catch (Exception e) {
+            // Исключение при выполнении запроса или обработке ответа
+            Log.e(TAG, "[fetchAndStore] Исключение при синхронизации лайкнутых рецептов для userId: " + userId,
+                    e); // Логируем полный стектрейс
+        }
     }
 
     /**
@@ -183,34 +198,36 @@ public class LikedRecipesRepository {
 
             for (Recipe recipe : serverRecipes) {
                 if (recipe != null) { // Проверка на null
-                   // Создаем сущность для таблицы лайков
-                   likedEntitiesToInsert.add(new LikedRecipeEntity(recipe.getId(), userId));
-                   // Создаем сущность для основной таблицы рецептов (для обновления/вставки)
-                   recipeEntitiesToInsert.add(new RecipeEntity(recipe));
+                    // Создаем сущность для таблицы лайков
+                    likedEntitiesToInsert.add(new LikedRecipeEntity(recipe.getId(), userId));
+                    // Создаем сущность для основной таблицы рецептов (для обновления/вставки)
+                    recipeEntitiesToInsert.add(new RecipeEntity(recipe));
                 }
             }
 
             // Выполняем операции в транзакции для атомарности
             try {
-                 Log.d(TAG, "[DB Sync] Запуск транзакции для обновления лайков userId: " + userId);
+                Log.d(TAG, "[DB Sync] Запуск транзакции для обновления лайков userId: " + userId);
                 AppDatabase.getInstance(context).runInTransaction(() -> {
                     // 1. Очистить старые лайки для этого пользователя
                     Log.d(TAG, "[DB Sync] Удаление старых записей из liked_recipes для userId: " + userId);
                     likedRecipeDao.deleteAllForUser(userId);
                     // 2. Вставить новые лайки, если они есть
                     if (!likedEntitiesToInsert.isEmpty()) {
-                         Log.d(TAG, "[DB Sync] Вставка " + likedEntitiesToInsert.size() + " новых записей в liked_recipes для userId: " + userId);
+                        Log.d(TAG, "[DB Sync] Вставка " + likedEntitiesToInsert.size()
+                                + " новых записей в liked_recipes для userId: " + userId);
                         likedRecipeDao.insertAll(likedEntitiesToInsert);
                     }
                     // 3. Вставить/Обновить полные данные рецептов в основную таблицу recipes
-                    if (!recipeEntitiesToInsert.isEmpty()){
-                         Log.d(TAG, "[DB Sync] Вставка/Обновление " + recipeEntitiesToInsert.size() + " записей в recipes.");
+                    if (!recipeEntitiesToInsert.isEmpty()) {
+                        Log.d(TAG, "[DB Sync] Вставка/Обновление " + recipeEntitiesToInsert.size()
+                                + " записей в recipes.");
                         recipeDao.insertAll(recipeEntitiesToInsert); // Используем RecipeDao
                     }
                 });
-                 Log.i(TAG, "[DB Sync] Транзакция обновления лайков для userId " + userId + " успешно завершена.");
+                Log.i(TAG, "[DB Sync] Транзакция обновления лайков для userId " + userId + " успешно завершена.");
             } catch (Exception e) {
-                 Log.e(TAG, "[DB Sync] Ошибка во время транзакции обновления лайков для userId: " + userId, e);
+                Log.e(TAG, "[DB Sync] Ошибка во время транзакции обновления лайков для userId: " + userId, e);
             }
         });
     }
@@ -236,24 +253,28 @@ public class LikedRecipesRepository {
             Log.d(TAG, "Удаление лайка из локальной базы: recipeId=" + recipeId + ", userId=" + userId);
             likedRecipeDao.deleteById(recipeId, userId);
         });
-         // TODO: Добавить вызов API для синхронизации снятия лайка с сервером
+        // TODO: Добавить вызов API для синхронизации снятия лайка с сервером
     }
 
     /**
      * Проверить, лайкнут ли рецепт локально (синхронно).
-     * ВНИМАНИЕ: Выполняет запрос к БД в вызывающем потоке. Не использовать в UI потоке!
+     * ВНИМАНИЕ: Выполняет запрос к БД в вызывающем потоке. Не использовать в UI
+     * потоке!
      * Лучше использовать LiveData<List<Recipe>> и проверять наличие в списке.
      * Оставляем для возможного использования в фоновых задачах.
      */
     public boolean isRecipeLikedLocalSync(int recipeId, String userId) {
-         // Этот метод не рекомендуется использовать из UI потока.
-         // Room потребует @AllowMainThreadQueries или вызов из фонового потока.
-         // Лучше получать LiveData и проверять список.
-         // Если все же нужен синхронный вызов, его надо делать в executor'е или через suspend функцию в Kotlin.
-         Log.w(TAG, "Синхронная проверка лайка isRecipeLikedLocalSync - не рекомендуется для UI потока!");
-         // Возвращаем false или выбрасываем исключение, чтобы предотвратить неправильное использование
-         // return likedRecipeDao.isRecipeLiked(recipeId, userId); // Раскомментировать с осторожностью
-         return false; // Безопасное значение по умолчанию
+        // Этот метод не рекомендуется использовать из UI потока.
+        // Room потребует @AllowMainThreadQueries или вызов из фонового потока.
+        // Лучше получать LiveData и проверять список.
+        // Если все же нужен синхронный вызов, его надо делать в executor'е или через
+        // suspend функцию в Kotlin.
+        Log.w(TAG, "Синхронная проверка лайка isRecipeLikedLocalSync - не рекомендуется для UI потока!");
+        // Возвращаем false или выбрасываем исключение, чтобы предотвратить неправильное
+        // использование
+        // return likedRecipeDao.isRecipeLiked(recipeId, userId); // Раскомментировать с
+        // осторожностью
+        return false; // Безопасное значение по умолчанию
     }
 
     /**
@@ -263,7 +284,8 @@ public class LikedRecipesRepository {
     public void updateLikeStatusLocal(int recipeId, String userId, boolean isLiked) {
         executor.execute(() -> {
             if (isLiked) {
-                Log.d(TAG, "Обновление статуса лайка (локально): добавление recipeId=" + recipeId + ", userId=" + userId);
+                Log.d(TAG,
+                        "Обновление статуса лайка (локально): добавление recipeId=" + recipeId + ", userId=" + userId);
                 likedRecipeDao.insert(new LikedRecipeEntity(recipeId, userId));
             } else {
                 Log.d(TAG, "Обновление статуса лайка (локально): удаление recipeId=" + recipeId + ", userId=" + userId);
@@ -276,10 +298,14 @@ public class LikedRecipesRepository {
 
     // --- Удаленные методы SharedPreferences ---
     /*
-    public List<Recipe> loadLikedRecipesFromCache(Context context, String userId) { ... }
-    private void saveLikedRecipesToCache(Context context, String userId, List<Recipe> recipes) { ... }
-    public void syncLikedRecipesFromServer(String userId, final LikedRecipesCallback callback, Context context) { ... } // Старый метод синхронизации
-    */
+     * public List<Recipe> loadLikedRecipesFromCache(Context context, String userId)
+     * { ... }
+     * private void saveLikedRecipesToCache(Context context, String userId,
+     * List<Recipe> recipes) { ... }
+     * public void syncLikedRecipesFromServer(String userId, final
+     * LikedRecipesCallback callback, Context context) { ... } // Старый метод
+     * синхронизации
+     */
 
     /**
      * Проверяет доступность сети.
@@ -292,7 +318,8 @@ public class LikedRecipesRepository {
 
     /**
      * Получить список ID лайкнутых рецептов синхронно.
-     * ВНИМАНИЕ: Выполняет запрос к БД в вызывающем потоке. Не использовать в UI потоке!
+     * ВНИМАНИЕ: Выполняет запрос к БД в вызывающем потоке. Не использовать в UI
+     * потоке!
      */
     public List<Integer> getLikedRecipeIdsSync(String userId) {
         try {

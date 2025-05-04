@@ -120,91 +120,40 @@ public class Step {
 
 ## Взаимодействие с API
 
-### Основные эндпоинты
+### Актуальные эндпоинты основного API (частично Retrofit, частично OkHttp)
 
-```java
-public interface RecipeApiService {
-    @GET("recipes")
-    Call<List<Recipe>> getAllRecipes();
-    
-    @GET("recipes/{id}")
-    Call<Recipe> getRecipeById(@Path("id") String recipeId);
-    
-    @POST("recipes")
-    Call<Recipe> createRecipe(@Body Recipe recipe);
-    
-    @PUT("recipes/{id}")
-    Call<Recipe> updateRecipe(@Path("id") String recipeId, @Body Recipe recipe);
-    
-    @DELETE("recipes/{id}")
-    Call<Void> deleteRecipe(@Path("id") String recipeId);
-    
-    @GET("users/{userId}/favorites")
-    Call<List<Recipe>> getUserFavorites(@Path("userId") String userId);
-    
-    @POST("users/{userId}/favorites/{recipeId}")
-    Call<Void> addToFavorites(@Path("userId") String userId, @Path("recipeId") String recipeId);
-    
-    @DELETE("users/{userId}/favorites/{recipeId}")
-    Call<Void> removeFromFavorites(@Path("userId") String userId, @Path("recipeId") String recipeId);
-}
-```
+*   `POST /recipes/add`
+    *   **Описание**: Добавление/обновление рецепта (multipart/form-data или JSON).
+    *   **Клиент**: `AddRecipeViewModel` / `EditRecipeViewModel` (через OkHttp).
+*   `GET /recipes`
+    *   **Описание**: Получение списка всех рецептов (с учетом лайков для `userId`).
+    *   **Параметр**: `userId`.
+    *   **Клиент**: `RecipeApi` (Retrofit) -> `RecipeRemoteRepository`.
+*   `GET /recipes/{recipe_id}`
+    *   **Описание**: Получение деталей одного рецепта.
+    *   **Клиент**: `RecipeRepository` (вероятно, OkHttp или Retrofit при кэш-промахе).
+*   `DELETE /recipes/{recipe_id}`
+    *   **Описание**: Удаление рецепта.
+    *   **Заголовки**: `Authorization`, `X-User-ID`, `X-User-Permission`.
+    *   **Клиент**: `RecipeDeleter` (OkHttp).
+*   `POST /recipes/{recipe_id}/like`
+    *   **Описание**: Добавление/удаление лайка (переключение).
+    *   **Тело запроса**: JSON с `userId`.
+    *   **Клиент**: `RecipeRemoteRepository`, `RecipeDetailViewModel` (OkHttp).
+*   `GET /recipes/liked`
+    *   **Описание**: Получение списка лайкнутых рецептов.
+    *   **Параметр**: `userId`.
+    *   **Клиент**: `ApiService` (Retrofit) -> `LikedRecipesRepository`.
 
 ## Кэширование и локальное хранение
 
 ### Room Database
 
-Для локального хранения рецептов используется Room Database со следующими сущностями:
+Для локального хранения рецептов и избранного используется Room Database со следующими сущностями:
 
-```java
-@Entity(tableName = "recipes")
-public class RecipeEntity {
-    @PrimaryKey
-    @NonNull
-    private String id;
-    private String title;
-    private String description;
-    private String imageUrl;
-    // Другие поля рецепта
-    
-    // Геттеры, сеттеры
-}
+*   `RecipeEntity`: Хранит основные данные рецептов (`id`, `title`, `ingredients` (строка), `instructions` (строка), `photo_url`, `user_id` и т.д.).
+*   `LikedRecipeEntity`: Хранит связь между пользователем (`userId`) и лайкнутым рецептом (`recipeId`), а также дату добавления (`likedAt`).
 
-@Entity(tableName = "ingredients")
-public class IngredientEntity {
-    @PrimaryKey(autoGenerate = true)
-    private int id;
-    private String recipeId; // Внешний ключ
-    private String name;
-    private double quantity;
-    private String unit;
-    
-    // Геттеры, сеттеры
-}
-
-@Entity(tableName = "steps")
-public class StepEntity {
-    @PrimaryKey(autoGenerate = true)
-    private int id;
-    private String recipeId; // Внешний ключ
-    private int order;
-    private String description;
-    private String imageUrl;
-    
-    // Геттеры, сеттеры
-}
-
-@Entity(tableName = "favorites")
-public class FavoriteEntity {
-    @PrimaryKey
-    @NonNull
-    private String recipeId;
-    private String userId;
-    private Date addedAt;
-    
-    // Геттеры, сеттеры
-}
-```
 
 ### Стратегия кэширования
 
