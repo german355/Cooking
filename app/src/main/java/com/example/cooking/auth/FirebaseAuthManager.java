@@ -29,6 +29,7 @@ import com.google.firebase.auth.PhoneAuthProvider;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
+import java.util.Locale;
 
 /**
  * Основной класс для работы с Firebase Authentication
@@ -59,6 +60,8 @@ public class FirebaseAuthManager {
      */
     public FirebaseAuthManager() {
         firebaseAuth = FirebaseAuth.getInstance();
+        // Устанавливаем язык X-Firebase-Locale в формате ISO 639
+        firebaseAuth.setLanguageCode(Locale.getDefault().getLanguage());
     }
 
     /**
@@ -133,6 +136,15 @@ public class FirebaseAuthManager {
                     if (task.isSuccessful()) {
                         FirebaseUser user = firebaseAuth.getCurrentUser();
                         authCallback.onSuccess(user);
+                        // Отправка письма подтверждения с использованием ActionCodeSettings
+                        user.sendEmailVerification() // actionCodeSettings передан через ViewModel
+                            .addOnCompleteListener(task1 ->{
+                            if( task1.isSuccessful()){
+                                Log.d(TAG, "Email sent");
+                            } else{
+                                Log.d(TAG, "Email not sent");
+                            }
+                        });
                     } else {
                         String errorMessage = task.getException() != null ? 
                                 task.getException().getMessage() : 
