@@ -46,6 +46,7 @@ public class AuthFragment extends Fragment {
 
     private AuthViewModel viewModel;
     private NavController navController;
+    private boolean isInitialAuthState = true;
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -111,6 +112,10 @@ public class AuthFragment extends Fragment {
 
         // Наблюдатель для состояния аутентификации
         viewModel.getIsAuthenticated().observe(getViewLifecycleOwner(), isAuthenticated -> {
+            if (isInitialAuthState) {
+                isInitialAuthState = false;
+                return;
+            }
             if (isAuthenticated) {
                 Log.d(TAG, "Пользователь успешно авторизовался, обновляем MainViewModel");
                 // Получаем ViewModel активности

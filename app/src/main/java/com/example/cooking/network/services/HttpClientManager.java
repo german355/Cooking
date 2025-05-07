@@ -32,9 +32,9 @@ public class HttpClientManager {
      */
     public static OkHttpClient getClient() {
         if (client == null) {
-            // Создаем перехватчик для логирования
-            HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> Log.d(TAG, message));
-            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+            // Отключаем логирование, чтобы избежать ошибок при чтении закрытого потока
+            HttpLoggingInterceptor loggingInterceptor = new HttpLoggingInterceptor(message -> { /* no-op */ });
+            loggingInterceptor.setLevel(HttpLoggingInterceptor.Level.NONE);
 
             // Создаем перехватчик для повторных попыток при ошибках
             Interceptor retryInterceptor = new Interceptor() {
@@ -109,7 +109,8 @@ public class HttpClientManager {
                     .retryOnConnectionFailure(true)
                     .connectionPool(new ConnectionPool(0, 1, TimeUnit.NANOSECONDS))
                     .protocols(Collections.singletonList(Protocol.HTTP_1_1))
-                    .addInterceptor(loggingInterceptor)
+                    // отключили логирование
+                    //.addInterceptor(loggingInterceptor)
                     .addInterceptor(retryInterceptor)
                     // Добавляем перехватчик для заголовков авторизации
                     .addInterceptor(new com.example.cooking.auth.AuthInterceptor())

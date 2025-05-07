@@ -39,4 +39,12 @@ public interface ApiService {
      */
     @GET("recipes/liked")
     Call<RecipesResponse> getLikedRecipes(@Query("userId") String userId);
+
+    /**
+     * Простой поиск рецептов по строке.
+     * @param query строка поиска
+     * @return Call объект с ответом типа RecipesResponse
+     */
+    @GET("recipes/search-simple")
+    Call<RecipesResponse> searchRecipesSimple(@Query("q") String query);
 } 

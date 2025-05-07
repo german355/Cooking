@@ -17,7 +17,8 @@
 
         <SwitchPreference
                 android:defaultValue="true"
-                android:title="Умный поиск" android:key="switch_preference_1"
+                android:title="Умный поиск"
+                android:key="smart_search_enabled"
                 app:iconSpaceReserved="false"/>
 
         <SwitchPreference

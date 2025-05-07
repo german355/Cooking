@@ -113,9 +113,8 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
 
             @Override
             public boolean onQueryTextChange(String newText) {
-                // Опционально: поиск при вводе текста
-                performSearch(newText);
-                return true;
+                // Поиск только по нажатию Enter, не реагируем на изменение текста
+                return false;
             }
         });
         
@@ -131,6 +130,12 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
         
         // Наблюдаем за данными из ViewModel
         observeViewModel();
+        
+        // Наблюдаем за результатами поиска
+        viewModel.getSearchResults().observe(getViewLifecycleOwner(), recipes -> {
+            adapter.submitList(recipes);
+            showEmptyView(recipes == null || recipes.isEmpty());
+        });
         
         // Инициализируем наблюдение за Shared ViewModel
         if (getActivity() != null) {
@@ -313,33 +318,11 @@ public class HomeFragment extends Fragment implements RecipeListAdapter.OnRecipe
      */
     public void performSearch(String query) {
         if (query == null || query.trim().isEmpty()) {
-            // Если запрос пустой, показываем все рецепты
-            viewModel.getRecipes().removeObservers(getViewLifecycleOwner());
-            viewModel.getRecipes().observe(getViewLifecycleOwner(), recipes -> {
-                if (recipes != null) {
-                    adapter.submitList(recipes);
-                    showEmptyView(recipes.isEmpty());
-                }
-            });
+            // Очищаем результаты поиска и возвращаемся к основному списку
+            viewModel.getSearchResults().removeObservers(getViewLifecycleOwner());
         } else {
-            // Иначе выполняем поиск
-            RecipeSearchService searchService = new RecipeSearchService(requireContext());
-            searchService.searchRecipes(query.trim(), new RecipeSearchService.SearchCallback() {
-                @Override
-                public void onSearchResults(List<Recipe> recipes) {
-                    if (recipes != null) {
-                        adapter.submitList(recipes);
-                        showEmptyView(recipes.isEmpty());
-                    } else {
-                        showEmptyView(true);
-                    }
-                }
-                
-                @Override
-                public void onSearchError(String error) {
-                    showErrorMessage("Ошибка поиска: " + error);
-                }
-            });
+            // Запускаем поиск через ViewModel
+            viewModel.searchRecipes(query.trim());
         }
     }
     

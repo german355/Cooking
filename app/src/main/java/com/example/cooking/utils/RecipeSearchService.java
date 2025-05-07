@@ -1,69 +1,87 @@
 package com.example.cooking.utils;
 
-import android.content.Context;
-import android.util.Log;
-
 import com.example.cooking.Recipe.Recipe;
-import com.example.cooking.data.database.AppDatabase;
-import com.example.cooking.data.database.RecipeDao;
-import com.example.cooking.data.database.RecipeEntity;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
+import android.content.Context;
+import com.example.cooking.network.api.ApiService;
+import com.example.cooking.network.api.SearchApi;
+import com.example.cooking.network.responses.RecipesResponse;
+import com.example.cooking.network.responses.SearchResponse;
+import com.example.cooking.network.services.RetrofitClient;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import java.util.Collections;
+import com.example.cooking.utils.MySharedPreferences;
 
-/**
- * Сервис для поиска рецептов
- */
 public class RecipeSearchService {
-    
-    private static final String TAG = "RecipeSearchService";
-    private final RecipeDao recipeDao;
-    private final Executor executor;
     
     public interface SearchCallback {
         void onSearchResults(List<Recipe> recipes);
         void onSearchError(String error);
     }
     
+    private final Context context;
+    private final ApiService apiService;
+    private final SearchApi searchApi;
+    
     public RecipeSearchService(Context context) {
-        AppDatabase database = AppDatabase.getInstance(context);
-        recipeDao = database.recipeDao();
-        executor = Executors.newSingleThreadExecutor();
+        this.context = context.getApplicationContext();
+        this.apiService = RetrofitClient.getApiService();
+        this.searchApi = RetrofitClient.getClient().create(SearchApi.class);
     }
     
     /**
-     * Выполняет поиск рецептов по заголовку
-     * @param query поисковый запрос
-     * @param callback колбэк для возврата результатов
+     * Заглушка для метода поиска: пока возвращает пустой список
      */
     public void searchRecipes(String query, SearchCallback callback) {
         if (query == null || query.trim().isEmpty()) {
-            callback.onSearchResults(new ArrayList<>());
+            callback.onSearchResults(Collections.emptyList());
             return;
         }
-        
-        executor.execute(() -> {
-            try {
-                Log.d(TAG, "Выполняется поиск по запросу: " + query);
-                List<RecipeEntity> entities = recipeDao.searchRecipesByTitle(query);
-                Log.d(TAG, "Найдено рецептов: " + entities.size());
-                
-                // Конвертируем Entity в модели Recipe
-                List<Recipe> recipes = new ArrayList<>();
-                for (RecipeEntity entity : entities) {
-                    recipes.add(entity.toRecipe());
+        MySharedPreferences preferences = new MySharedPreferences(context);
+        boolean smartSearchEnabled = preferences.getBoolean("smart_search_enabled", false);
+        android.util.Log.d("RecipeSearchService", "Smart search enabled from prefs: " + smartSearchEnabled);
+        if (smartSearchEnabled) {
+            String userId = preferences.getString("userId", "0");
+            int page = 1;
+            int perPage = 20;
+            Call<SearchResponse> smartCall = searchApi.searchRecipes(query.trim(), userId, page, perPage);
+            smartCall.enqueue(new Callback<SearchResponse>() {
+                @Override
+                public void onResponse(Call<SearchResponse> call, Response<SearchResponse> response) {
+                    if (response.isSuccessful() && response.body() != null && response.body().getData() != null) {
+                        callback.onSearchResults(response.body().getData().getResults());
+                    } else {
+                        String message = response.body() != null ? "Статус: " + response.body().getStatus() : "Ошибка HTTP " + (response != null ? response.code() : "");
+                        callback.onSearchError(message);
+                    }
                 }
-                
-                // Отправляем результаты через колбэк
-                android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-                mainHandler.post(() -> callback.onSearchResults(recipes));
-            } catch (Exception e) {
-                Log.e(TAG, "Ошибка поиска: " + e.getMessage(), e);
-                android.os.Handler mainHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-                mainHandler.post(() -> callback.onSearchError(e.getMessage()));
-            }
-        });
+
+                @Override
+                public void onFailure(Call<SearchResponse> call, Throwable t) {
+                    callback.onSearchError(t.getMessage() != null ? t.getMessage() : "Ошибка сети при умном поиске");
+                }
+            });
+        } else {
+            Call<RecipesResponse> call = apiService.searchRecipesSimple(query.trim());
+            call.enqueue(new Callback<RecipesResponse>() {
+                @Override
+                public void onResponse(Call<RecipesResponse> call, Response<RecipesResponse> response) {
+                    if (response.isSuccessful() && response.body() != null && response.body().isSuccess()) {
+                        callback.onSearchResults(response.body().getRecipes());
+                    } else {
+                        String message = response.body() != null ? response.body().getMessage() : "Ошибка HTTP " + response.code();
+                        callback.onSearchError(message);
+                    }
+                }
+
+                @Override
+                public void onFailure(Call<RecipesResponse> call, Throwable t) {
+                    callback.onSearchError(t.getMessage() != null ? t.getMessage() : "Ошибка сети при простом поиске");
+                }
+            });
+        }
     }
 }

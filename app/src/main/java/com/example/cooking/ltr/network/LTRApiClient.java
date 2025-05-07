@@ -69,7 +69,6 @@ public class LTRApiClient {
         // Создаем параметры запроса
         Map<String, Object> queryParams = new HashMap<>();
         queryParams.put("q", query);
-        queryParams.put("use_personalization", usePersonalization);
         queryParams.put("page", 1);
         queryParams.put("per_page", 20);
 

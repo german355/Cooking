@@ -4,7 +4,7 @@ import android.app.Application;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
-import androidx.core.util.Pair;
+import android.util.Pair;
 import androidx.lifecycle.AndroidViewModel;
 import androidx.lifecycle.LifecycleOwner;
 import androidx.lifecycle.LiveData;
@@ -18,12 +18,23 @@ import com.example.cooking.data.repositories.RecipeLocalRepository;
 import com.example.cooking.data.repositories.RecipeRemoteRepository;
 import com.example.cooking.data.repositories.LikedRecipesRepository;
 import com.example.cooking.utils.MySharedPreferences;
+import android.content.SharedPreferences;
+import androidx.preference.PreferenceManager;
+import com.example.cooking.network.api.SearchApi;
+import com.example.cooking.network.services.RetrofitClient;
+import com.example.cooking.network.responses.SearchResponse;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import com.example.cooking.utils.RecipeSearchService;
 
 import java.util.List;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.ArrayList;
 
 /**
  * ViewModel для HomeFragment
@@ -47,6 +58,9 @@ public class HomeViewModel extends AndroidViewModel {
     // Флаг для отслеживания первичной загрузки
     private boolean isInitialLoadDone = false;
     
+    // LiveData для результатов поиска
+    private final MutableLiveData<List<Recipe>> searchResults = new MutableLiveData<>();
+
     public HomeViewModel(@NonNull Application application) {
         super(application);
         localRepository = new RecipeLocalRepository(application);
@@ -98,6 +112,13 @@ public class HomeViewModel extends AndroidViewModel {
      */
     public LiveData<String> getErrorMessage() {
         return errorMessage;
+    }
+    
+    /**
+     * Получить LiveData с результатами поиска
+     */
+    public LiveData<List<Recipe>> getSearchResults() {
+        return searchResults;
     }
     
     /**
@@ -267,5 +288,53 @@ public class HomeViewModel extends AndroidViewModel {
             executor.shutdown();
         }
          Log.d(TAG, "HomeViewModel cleared.");
+    }
+
+    /**
+     * Выполнить поиск рецептов, учитывая настройку Smart Search
+     * @param query строка поиска
+     */
+    public void searchRecipes(String query) {
+        isRefreshing.setValue(true);
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(getApplication());
+        boolean smartEnabled = prefs.getBoolean("smart_search_enabled", true);
+        String userId = prefs.getString("userId", "0");
+        if (smartEnabled) {
+            // Умный поиск через GET /search/
+            SearchApi api = RetrofitClient.getClient().create(SearchApi.class);
+            Call<SearchResponse> call = api.searchRecipes(query.trim(), userId, 1, 20);
+            call.enqueue(new Callback<SearchResponse>() {
+                @Override
+                public void onResponse(Call<SearchResponse> call, Response<SearchResponse> response) {
+                    if (response.isSuccessful() && response.body() != null && response.body().getData() != null) {
+                        searchResults.postValue(response.body().getData().getResults());
+                    } else {
+                        errorMessage.postValue("Ошибка HTTP: " + response.code());
+                    }
+                    isRefreshing.postValue(false);
+                }
+
+                @Override
+                public void onFailure(Call<SearchResponse> call, Throwable t) {
+                    errorMessage.postValue(t.getMessage() != null ? t.getMessage() : "Ошибка сети при поиске");
+                    isRefreshing.postValue(false);
+                }
+            });
+        } else {
+            // Простой поиск через /recipes/search-simple
+            new RecipeSearchService(getApplication()).searchRecipes(query.trim(), new RecipeSearchService.SearchCallback() {
+                @Override
+                public void onSearchResults(List<Recipe> recipes) {
+                    searchResults.postValue(recipes != null ? recipes : Collections.emptyList());
+                    isRefreshing.postValue(false);
+                }
+
+                @Override
+                public void onSearchError(String error) {
+                    errorMessage.postValue(error);
+                    isRefreshing.postValue(false);
+                }
+            });
+        }
     }
 } 
