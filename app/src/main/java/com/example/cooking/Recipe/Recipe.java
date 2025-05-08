@@ -36,6 +36,10 @@ public class Recipe implements Parcelable {
     @SerializedName("instructions")
     @JsonAdapter(StepsAdapter.class)
     private ArrayList<Step> steps = new ArrayList<>();
+    @SerializedName("food_type")
+    private String mealType;
+    @SerializedName("meal_type")
+    private String foodType;
 
     /**
      * Адаптер для десериализации поля ingredients, которое может прийти как строка JSON или как массив
@@ -194,6 +198,22 @@ public class Recipe implements Parcelable {
 
     // Конструктор для тестовых данных
 
+    public String getMealType() {
+        return mealType;
+    }
+
+    public void setMealType(String mealType) {
+        this.mealType = mealType;
+    }
+
+    public String getFoodType() {
+        return foodType;
+    }
+
+    public void setFoodType(String foodType) {
+        this.foodType = foodType;
+    }
+
     // Геттеры и сеттеры
     public int getId() {
         return id;
@@ -224,6 +244,8 @@ public class Recipe implements Parcelable {
         sb.append(", title='").append(title).append(' ');
         sb.append(", userId='").append(userId).append(' ');
         sb.append(", isLiked=").append(isLiked);
+        sb.append(", mealType=").append(mealType);
+        sb.append(", foodType=").append(foodType);
         sb.append(", createdAt='").append(created_at).append(' ');
         sb.append(", photo_url='").append(photo_url).append(' ');
 
@@ -296,6 +318,8 @@ public class Recipe implements Parcelable {
         title = in.readString();
         created_at = in.readString();
         userId = in.readString();
+        mealType = in.readString();
+        foodType = in.readString();
         isLiked = in.readByte() != 0; // isLiked == true if byte != 0
         photo_url = in.readString();
         // Читаем списки
@@ -309,6 +333,8 @@ public class Recipe implements Parcelable {
         dest.writeString(title);
         dest.writeString(created_at);
         dest.writeString(userId);
+        dest.writeString(mealType);
+        dest.writeString(foodType);
         dest.writeByte((byte) (isLiked ? 1 : 0)); // if isLiked == true, byte == 1
         dest.writeString(photo_url);
         // Записываем списки

@@ -26,6 +26,8 @@ public class RecipeEntity {
     private List<Step> instructions;
     private String created_at;
     private String userId;
+    private String mealType;
+    private String foodType;
     private String photo_url;
     private boolean isLiked;
 
@@ -39,6 +41,10 @@ public class RecipeEntity {
         this.title = recipe.getTitle();
         this.ingredients = recipe.getIngredients();
         this.instructions = recipe.getSteps();
+
+        this.mealType = recipe.getMealType();
+        this.foodType = recipe.getFoodType();
+
         this.created_at = recipe.getCreated_at();
         this.userId = recipe.getUserId();
         this.photo_url = recipe.getPhoto_url();
@@ -52,6 +58,10 @@ public class RecipeEntity {
         recipe.setTitle(title);
         recipe.setIngredients(ingredients == null ? new ArrayList<>() : new ArrayList<>(ingredients));
         recipe.setSteps(instructions == null ? new ArrayList<>() : new ArrayList<>(instructions));
+        
+        recipe.setMealType(mealType);
+        recipe.setFoodType(foodType);
+        
         recipe.setCreated_at(created_at);
         recipe.setUserId(userId);
         recipe.setPhoto_url(photo_url);
@@ -92,6 +102,20 @@ public class RecipeEntity {
         this.instructions = instructions;
     }
 
+    public String getMealType() {
+        return mealType;
+    }
+
+    public void setMealType(String mealType) {
+        this.mealType = mealType;
+    }
+    public String getFoodType() {
+        return foodType;
+    }
+
+    public void setFoodType(String foodType) {
+        this.foodType = foodType;
+    }
     public String getCreated_at() {
         return created_at;
     }

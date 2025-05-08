@@ -142,7 +142,7 @@ public class RecipeListAdapter extends ListAdapter<Recipe, RecipeListAdapter.Rec
             intent.putExtra(RecipeDetailActivity.EXTRA_SELECTED_RECIPE, recipe);
 
             
-            Log.d(TAG, "Запуск RecipeDetailActivity для рецепта ID: " + recipe.getId());
+            Log.d(TAG, "Запуск RecipeDetailActivity для рецепта: " + recipe.toString());
             if (recipe.getPhoto_url() != null) {
                 Log.d(TAG, "Photo URL: " + recipe.getPhoto_url());
             }

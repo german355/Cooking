@@ -130,20 +130,6 @@ public class RecipeAdapter extends RecyclerView.Adapter<RecipeAdapter.RecipeView
         // Устанавливаем обработчик нажатий на карточку
         holder.cardView.setOnClickListener(v -> {
             Intent intent = new Intent(v.getContext(), RecipeDetailActivity.class);
-            intent.putExtra("recipe_id", recipe.getId());
-            intent.putExtra("recipe_title", recipe.getTitle());
-            intent.putExtra("recipe_ingredients", recipe.getIngredients());
-            intent.putExtra("recipe_instructions", recipe.getSteps());
-            intent.putExtra("Created_at", recipe.getCreated_at());
-            intent.putExtra("userId", recipe.getUserId());
-            intent.putExtra("photo_url", recipe.getPhoto_url());
-            // Передаем состояние лайка
-            intent.putExtra("isLiked", recipe.isLiked());
-            Log.d("Id", recipe.getUserId());
-            if (recipe.getPhoto_url() != null) {
-                Log.d("RecipeAdapter", "Photo URL: " + recipe.getPhoto_url());
-            }
-            
             // Запускаем активность с ожиданием результата
             ((AppCompatActivity) v.getContext()).startActivityForResult(intent, 200);
         });
