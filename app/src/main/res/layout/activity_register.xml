@@ -113,16 +113,8 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/confirmPasswordInputLayout" />
-            
-        <TextView
-            android:id="@+id/orTextView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="или"
-            app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintRight_toRightOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/firebaseRegisterButton" />
+
+
 
         <Button
             android:id="@+id/googleSignupButton"
@@ -134,7 +126,7 @@
             android:textSize="14sp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/orTextView" />
+            app:layout_constraintTop_toBottomOf="@id/firebaseRegisterButton" />
 
         <TextView
             android:id="@+id/loginPromptTextView"

@@ -60,8 +60,6 @@ public class FirebaseAuthManager {
      */
     public FirebaseAuthManager() {
         firebaseAuth = FirebaseAuth.getInstance();
-        // Отключаю проверку reCAPTCHA для тестирования
-        firebaseAuth.getFirebaseAuthSettings().setAppVerificationDisabledForTesting(true);
         // Устанавливаем язык X-Firebase-Locale в формате ISO 639
         firebaseAuth.setLanguageCode(Locale.getDefault().getLanguage());
     }
@@ -138,15 +136,7 @@ public class FirebaseAuthManager {
                     if (task.isSuccessful()) {
                         FirebaseUser user = firebaseAuth.getCurrentUser();
                         authCallback.onSuccess(user);
-                        // Отправка письма подтверждения с использованием ActionCodeSettings
-                        user.sendEmailVerification() // actionCodeSettings передан через ViewModel
-                            .addOnCompleteListener(task1 ->{
-                            if( task1.isSuccessful()){
-                                Log.d(TAG, "Email sent");
-                            } else{
-                                Log.d(TAG, "Email not sent");
-                            }
-                        });
+
                     } else {
                         String errorMessage = task.getException() != null ? 
                                 task.getException().getMessage() : 

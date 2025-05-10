@@ -3,6 +3,8 @@ package com.example.cooking.network.api;
 import com.example.cooking.auth.UserLoginRequest;
 import com.example.cooking.auth.UserRegisterRequest;
 import com.example.cooking.data.models.ApiResponse;
+import com.example.cooking.data.models.PasswordResetRequest;
+import com.example.cooking.data.models.PasswordResetResponse;
 import com.example.cooking.network.responses.RecipesResponse;
 import retrofit2.Call;
 import retrofit2.http.Body;
@@ -47,4 +49,7 @@ public interface ApiService {
      */
     @GET("recipes/search-simple")
     Call<RecipesResponse> searchRecipesSimple(@Query("q") String query);
+
+    @POST("auth/password-reset-request")
+    Call<PasswordResetResponse> requestPasswordReset(@Body PasswordResetRequest request);
 } 

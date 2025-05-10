@@ -14,11 +14,11 @@
       },
       "oauth_client": [
         {
-          "client_id": "735196544943-c3j3t3bv51hic201m5kg0mbtdm826k5p.apps.googleusercontent.com",
+          "client_id": "735196544943-mklrki5k4opt9d6m77nk4um9llhloco8.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.cooking",
-            "certificate_hash": "29cad123447a0f77e58791aafdf98d36e06f5ed4"
+            "certificate_hash": "cb3009c7d5d19e5f1d384fbad6eed2bd19119c51"
           }
         },
         {

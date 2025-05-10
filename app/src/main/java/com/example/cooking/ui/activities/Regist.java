@@ -29,6 +29,8 @@ import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.auth.FirebaseUser;
 import com.example.cooking.ui.viewmodels.AuthViewModel;
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException;
+import com.google.firebase.auth.FirebaseAuthUserCollisionException;
 
 /**
  * Активность регистрации пользователя
@@ -46,6 +48,7 @@ public class Regist extends AppCompatActivity {
     private Button registerButton;
     private Button googleSignupButton;
     private TextView loginPromptTextView;
+    private TextView orTextView;
     private ProgressBar progressBar;
     
     // Layouts для отображения ошибок
@@ -102,7 +105,9 @@ public class Regist extends AppCompatActivity {
         registerButton = findViewById(R.id.firebaseRegisterButton);
         googleSignupButton = findViewById(R.id.googleSignupButton);
         loginPromptTextView = findViewById(R.id.loginPromptTextView);
+        orTextView = findViewById(R.id.orTextView);
         progressBar = findViewById(R.id.progressBar);
+        //resendVerificationButton = findViewById(R.id.resendVerificationButton);
         
         if (progressBar == null) {
             Log.w(TAG, "ProgressBar не найден в layout, необходимо добавить его в activity_register.xml");

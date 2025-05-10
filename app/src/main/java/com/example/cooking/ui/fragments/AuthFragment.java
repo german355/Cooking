@@ -22,10 +22,12 @@ import androidx.navigation.Navigation;
 import com.example.cooking.R;
 import com.example.cooking.auth.FirebaseAuthManager;
 import com.example.cooking.ui.activities.Regist;
+import com.example.cooking.ui.activities.PasswordRecoveryActivity;
 import com.example.cooking.ui.viewmodels.AuthViewModel;
 import com.example.cooking.ui.viewmodels.MainViewModel;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
+import com.google.firebase.auth.FirebaseUser;
 
 /**
  * Фрагмент авторизации, который показывается вместо ProfileFragment,
@@ -43,6 +45,7 @@ public class AuthFragment extends Fragment {
     private Button googleLoginButton;
     private TextView registerTextView;
     private ProgressBar progressBar;
+    private TextView forgotPasswordTextView;
 
     private AuthViewModel viewModel;
     private NavController navController;
@@ -64,6 +67,7 @@ public class AuthFragment extends Fragment {
         googleLoginButton = view.findViewById(R.id.google_login_button);
         registerTextView = view.findViewById(R.id.register_text_view);
         progressBar = view.findViewById(R.id.login_progress_bar);
+        forgotPasswordTextView = view.findViewById(R.id.forgotPasswordTextView);
 
         // Настройка обработчиков ввода
         setupTextWatchers();
@@ -202,6 +206,14 @@ public class AuthFragment extends Fragment {
             Intent intent = new Intent(requireActivity(), Regist.class);
             startActivity(intent);
         });
+
+        // Обработчик для "Забыли пароль?"
+        if (forgotPasswordTextView != null) {
+            forgotPasswordTextView.setOnClickListener(v -> {
+                Intent intent = new Intent(getActivity(), PasswordRecoveryActivity.class);
+                startActivity(intent);
+            });
+        }
     }
 
     @Override

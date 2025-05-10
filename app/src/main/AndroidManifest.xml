@@ -47,7 +47,16 @@
             android:name=".ui.activities.AddRecipeActivity"
             android:exported="false"
             android:parentActivityName=".ui.activities.MainActivity" />
+
+        <activity android:name=".ui.activities.PasswordRecoveryActivity"
+        android:label="Восстановление пароля"
+        android:parentActivityName=".ui.activities.Regist">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".ui.activities.Regist" />
+        </activity>
         <activity
+            
             android:name=".ui.activities.EditRecipeActivity"
             android:exported="false"
             android:parentActivityName=".ui.activities.RecipeDetailActivity" />
